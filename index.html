@@ -10,7 +10,7 @@
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
 <meta name="googlebot" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta name="description" content="Internal office tool of JVVNL JEn (O&amp;M). Not a public site.">
+<meta name="description" content="Internal office tool for J.En. (O&amp;M). Not a public site.">
 <meta name="apple-mobile-web-app-title" content="JenBuddy">
 <title>JEn Paota Estimates</title>
 <style>
@@ -863,10 +863,10 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div class="app">
   <header class="tb">
     <div class="tb-grid">
-      <div><div class="tb-office">JEn (O&amp;M) Paota</div><div class="tb-sub">JVVNL estimates, PDF and Excel</div></div>
+      <div><div class="tb-office">JEn (O&amp;M) Paota</div><div class="tb-sub">Estimates, PDF and Excel</div></div>
       <button class="tb-find" data-act="palette" aria-label="Search anything (Ctrl K)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21" stroke-linecap="round"/></svg><span>Search</span><kbd>Ctrl K</kbd></button>
       <div class="tb-right"><span class="cl-badge" id="clBadge" hidden data-st="ok" aria-label="Cloud status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 9.6 4.2 4.2 0 0 0 7 18z" stroke-linejoin="round"/></svg></span><button class="tb-theme" data-act="theme" aria-label="Switch day or night look" id="thBtn"></button>
-        <div class="tb-meta">Rates<b id="sirTag">SIR 346/01.06.2026</b></div></div>
+        <div class="tb-meta">Rates<b id="sirTag"></b></div></div>
     </div>
     <div class="sld" aria-hidden="true">
       <svg class="run"><defs><pattern id="poleX" width="46" height="26" patternUnits="userSpaceOnUse"><path d="M19 8l8 10M27 8l-8 10" stroke="currentColor" stroke-width="1.6" fill="none"/></pattern></defs>
@@ -889,7 +889,9 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div class="pal" id="pal" hidden></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
-<script>!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
+<script>
+const APP_VERSION = '26.09.2026 11:18';
+!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
     Licensed under the Apache License, Version 2.0 (the "License"); you may not use
@@ -1293,12 +1295,12 @@ pgrabbit|PG Clamp for Rabbit|5015|NOS|64.40|
 vermic|Vermiculite Charge (as per ACR)|ACR|MTR|335.39|
 `;
 
-const UNIT_MAP = { KM: 'Mtr', MT: 'Kg', MTR: 'Mtr', NOS: 'Nos', SET: 'Set', KG: 'Kg', KL: 'KL', PAIRS: 'Pair' };
+const UNIT_MAP = { KM: 'Mtr', MT: 'Kg', MTR: 'Mtr', NOS: 'Nos', SET: 'Set', KG: 'Kg', KL: 'KL', PAIRS: 'Pair', SQMTR: 'Sq.Mtr' };
 function cut3(x) { return Math.floor(x * 1000 + 1e-6) / 1000; }
 
-function parseSIR() {
+function parseSIR(text) {
   const out = []; let cat = ''; let n = 0;
-  SIR_TEXT.split('\n').forEach(line => {
+  (text || SIR_TEXT).split('\n').forEach(line => {
     line = line.trim(); if (!line) return;
     if (line[0] === '#') { cat = line.slice(1).trim(); return; }
     const p = line.split('|');
@@ -1311,6 +1313,504 @@ function parseSIR() {
   return out;
 }
 const SIR_BASE = parseSIR();
+/* ---- each discom brings its own rate list and its own name everywhere ---- */
+const SIR_TEXT_JD = `
+# Line Support (steel sections)
+|R.S.JOIST 116X100 mm ISSCO||MT|42435.00|1
+|M.S.CHANNEL 100 x 50 x 5 mm SAIL SAIL||MT|85491.00|2
+|M.S.CHANNEL 75 x 40 x 6 mm SAIL SAIL||MT|86169.50|3
+|M.S.ROUND 25 SQ mm SAIL||MT|31825.10|4
+|M.S.ROUND 20 SQ mm SAIL||MT|31825.10|5
+|M. S. ANGLE IRON 75 x 75 x6 mm SAIL SAIL||MT|84812.50|6
+|M. S. ANGLE IRON 65 x 65 x6 mm SAIL SAIL||MT|84812.50|7
+|M. S. ANGLE IRON 50 x 50 x6 mm SAIL SAIL||MT|86169.50|8
+|M. S. FLAT IRON 50 x 10 mm SAIL||MT|86169.50|9
+|M. S. FLAT IRON 50 x 8 mm SAIL||MT|61743.50|10
+|M. S. FLAT IRON 50 x 6 mm|1761|MT|86169.50|11
+# Fabricated Steel Items
+|33 KV Cross Arm Set with top hamper & clamps|1863|SET|1947.10|12
+vcross11|11 KV Cross Arm Set with top hamper & clamps|1983|SET|1026.82|13
+tophamper11|11 KV Top- Hamper without Clamp|1935|SET|228.08|14
+ch14|1.4 Meter Long MS Channel bracket with clamp (Cut Point Channel)|1984|SET|1164.54|15
+ltbr2|LT Cross Arm 600 mm With Clamp|1982|SET|339.19|16
+|LT Cross Arm 600 mm With Clamp and Top Hamper|1762|SET|556.95|17
+ltbr4|LT Cross Arm set 1200 mm With Clamp|1982|SET|591.61|18
+|33 KV Cross Arm (Channel)|JP3445|NOS|456.55|19
+|11KV Cross Arm (Channel)|JP3445|NOS|226.55|20
+|33/11 KV S/S Structure (Rural)|1861|SET|346052.23|21
+|33/11 KV S/S Structure Set (Urban)|1954|SET|1292019.04|22
+|11/0.4 KV S/S Structure 148.391 Kgs|1454|SET|9665.39|23
+ssstr_dp|11/0.4 KV S/S Structure (166.746 ) Kg|1985|SET|13375.48|24
+|11/0.4 KV S/S Structure 284 Kgs|1057|SET|17430.27|25
+dp33|33 KV Line DP Set|1953|SET|11410.51|26
+dp11|11 KV Line DP Set|1953|SET|8128.61|27
+|33 KV Lattice Structure 42' LONG WITH CROSS ARMS WITH NUT BOLT DOUBLE CIRCUIT|2061|SET|46100.84|28
+lattice36|33 KV Lattice Structure 36' LONG WITH CROSS ARMS WITH NUT BOLT SINGLE CIRCUIT|2061|SET|35695.60|29
+ssstr_1p5|Steel structure for Single Phase Transformer for 8 Mtrs.|1060|SET|1094.90|30
+ssstr_1p16|Steel structure for Single Phase Transformer for 9 Mtrs.|714|SET|2922.08|31
+|Stay Clamp suitable for 8 Mtr PCC Pole|1053|NOS|103.28|32
+stayclamp|Stay Clamp suitable for 9 Mtr PCC Pole 200 kg|1864|NOS|204.42|33
+|Stay Clamp suitable for 9 Mtr PCC Pole 400 kg|1864|NOS|241.78|34
+|Extenion bracket along with accessories for 8 Mt. Pole|403|SET|2448.38|35
+|Extenion bracket along with accessories for 9 Mt. Pole|403|SET|3037.08|36
+# 33/11 KV Power Transformer (new)
+|33/11 KV Power Transformer 10 MVA With OLTC|417|NOS|6338526.30|37
+|33/11 KV Power Transformer 8.0 MVA|2070|NOS|8337500.00|38
+|33/11 KV Power Transformer 5.0 MVA|1962|NOS|5491250.00|39
+|33/11 KV Power Transformer 3.15 MVA|1682|NOS|3798243.00|40
+# 11/0.4 KV Distribution Transformer (new)
+tf3_500|11/0.4 KV DT 500 KVA (COPPER WOUND)|2047|NOS|1506243.55|41
+tf3_315|11/0.4 KV DT 315 KVA (COPPER WOUND)|2072|NOS|924574.70|42
+tf3_250|11/0.4 KV DT 250 KVA|579|NOS|201656.08|43
+tf3_160|11/0.4 KV DT 160 KVA|2071|NOS|261943.55|44
+tf3_100|3 Phase, 100 KVA EEL-2, Star-1, DT (With M&P Box )|1958|NOS|177388.65|45
+tf3_63|63 KVA ( WITH LV BUSHING COVER CUM METER & PROTECTION BOX AND WITHOUT METER)|2024|NOS|138276.00|46
+tf3_40|40 KVA ( WITH LV BUSHING COVER CUM METER & PROTECTION BOX WITH MCCB AND WITHOUT METER)|1929|NOS|104754.65|47
+|3 Phase, 40 KVA EEL-2, Star-1, DT CSP TYPE|1979|NOS|120520.00|48
+|3 Phase, 25 KVA EEL-2, Star-1, DT CSP TYPE|1980|NOS|88423.50|49
+|3 Phase, 16 KVA EEL-2, Star-1, DT CSP TYPE|2027|NOS|75245.65|50
+tf3_25|3 Phase, 25 KVA EEL-2, Star-1, DT (With M&P Box )|1728|NOS|69575.00|51
+tf3_16|3 Phase, 16 KVA EEL-2, Star-1, DT (With M&P Box )|1771|NOS|60604.99|52
+tf3_10|3 Phase, 10 KVA EEL-1, Star-1, DT CSP TYPE with provision of LT Bushing Box|2059 (AVVNL)|NOS|68866.60|53
+|3 Phase, 16 KVA EEL-2, Star-1, DT (Without M&P Box )|1771|NOS|58074.99|54
+|3 Phase, 100 KVA EEL-2, Star-1, DT (Without M&P Box )|1958|NOS|173938.65|55
+|3 Phase DT 63 KVA (Without Box )|2024|NOS|134883.50|56
+|3 Phase DT 40 KVA (Without Box )|1929|NOS|100683.65|57
+|3 Phase, 25 KVA EEL-2, Star-1, DT (Without M&P Box )|1728|NOS|67505.00|58
+# Single Phase Distribution Transformer
+tf1_5|1-Ph DT 5 KVA (All. WOUND)|2031|NOS|49251.42|59
+tf1_10|1-Ph DT 10 KVA (All. WOUND)|2048|NOS|50840.01|60
+tf1_16|16 KVA EEL-2, Aluminium Wound|1966|NOS|64745.00|61
+tf1_25|1-Ph DT 25 KVA (All. WOUND)|2049|NOS|84812.50|62
+# Energy Meters (static)
+mtr3|3 Phase 4 Wire 10-60 Amp with Push fit box|1999|NOS|2080.35|63
+|3 Phase 4 Wire 10-60 Amp with LCD display without Box|1930|NOS|2271.25|64
+mtr1|Single Phase 5-30 Amp with Box (push fit type)|2046|NOS|915.30|65
+|Single Phase Pre Paid Meter|2193|NOS|5556.80|66
+|Three Phase Pre Paid Meter|2297|NOS|10925.00|67
+|LT CT OPERATED (-/5 AMP) STATIC(counter type)|345|NOS|476.10|68
+|LT CT OPERATED (-/5 AMP) STATIC with LCD display Class 1.0|426|NOS|2185.00|69
+|LT CT Meter of Ratio 200/05 Amp.|2012|NOS|2080.35|70
+# Potential Transformers
+|PT 33000/110 VOLT|857|NOS|21764.47|71
+|PT 11000/110 VOLT|JP2450|NOS|18813.15|72
+# 33 KV CTPT Set (feeder metering)
+|33 KV CTPT (Feeder) 200/5 AMP|1989|NOS|88205.00|73
+|33 KV CTPT (Feeder) 150/5 AMP|1989|NOS|88205.00|74
+|33 KV CTPT (Feeder) 100/5 AMP|1989|NOS|89562.00|75
+|33 KV CTPT (Feeder) 60/5 AMP|1989|NOS|89290.60|76
+|33 KV CTPT (Feeder) 30/5 AMP|683|NOS|84670.68|77
+# 33 KV CTPT Set (consumer metering)
+|33 KV CTPT (Consumer) 200/5 AMP|1989|NOS|88205.00|78
+|33 KV CTPT (Consumer) 150/5 AMP|1989|NOS|88205.00|79
+|33 KV CTPT (Consumer) 120/5 AMP|JP2412|NOS|70832.00|80
+|33 KV CTPT (Consumer) 100/5 AMP|1989|NOS|89562.00|81
+|33 KV CTPT (Consumer) 75/5 AMP|1989|NOS|89290.60|82
+|33 KV CTPT (Consumer) 60/5 AMP|1989|NOS|89290.60|83
+|33 KV CTPT (Consumer) 50/5 AMP|1989|NOS|89290.60|84
+|33 KV CTPT (Consumer) 40/5 AMP|JP2412|NOS|70831.84|85
+|33 KV CTPT (Consumer) 30/5 AMP|683|NOS|84670.68|86
+|33 KV CTPT (Consumer) 25/5 AMP|1891|NOS|82777.00|87
+|33 KV CTPT (Consumer) 20/5 AMP|JP1945|NOS|107215.55|88
+|33 KV CTPT (Consumer) 15/5 AMP|JP2534|NOS|56921.44|89
+|33 KV CTPT (Consumer) 10/5 AMP|JP2412|NOS|72547.78|90
+|33 KV CTPT (Consumer) 7.5/5 AMP|JP2412|NOS|72547.78|91
+|33 KV CTPT (Consumer) 5/5 AMP|JP2412|NOS|72547.78|92
+# 11 KV CTPT Set (feeder metering)
+|11 KV CTPT (Feeder) 400/5 AMP|JP2520|NOS|25631.42|93
+ctpt300|11 KV CTPT (Feeder) 300/5 AMP|JP2520|NOS|28566.95|94
+|11 KV CTPT (Feeder) 200/5 AMP|1577|NOS|26403.69|95
+|11 KV CTPT (Feeder) 150/5 AMP|203|NOS|24083.59|96
+|11 KV CTPT (Feeder) 100/5 AMP|2001|NOS|39420.85|97
+|11 KV CTPT (Feeder) 50/5 AMP|1918|NOS|37982.43|98
+# 11 KV CTPT Set (consumer metering)
+ctpt200|11 KV CTPT (Consumer) 200/5 AMP|1577|NOS|26403.69|99
+ctpt150|11 KV CTPT (Consumer) 150/5 AMP|203|NOS|26133.96|100
+ctpt100|11 KV CTPT (Consumer) 100/5 AMP|2001|NOS|39420.85|101
+ctpt75|11 KV CTPT (Consumer) 75/5 AMP|1810|NOS|36923.97|102
+ctpt50|11 KV CTPT (Consumer) 50/5 AMP|1918|NOS|37982.43|103
+ctpt30|11 KV CTPT (Consumer) 30/5 AMP|1810|NOS|36923.97|104
+ctpt25|11 KV CTPT (Consumer) 25/5 AMP|2001|NOS|39420.85|105
+ctpt20|11 KV CTPT (Consumer) 20/5 AMP|995|NOS|36355.85|106
+ctpt15|11 KV CTPT (Consumer) 15/5 AMP|1866|NOS|38226.69|107
+ctpt10|11 KV CTPT (Consumer) 10/5 AMP|1030|NOS|40446.42|108
+ctpt7p5|11 KV CTPT (Consumer) 7.5/5 AMP|1918|NOS|41469.92|109
+ctpt5|11 KV CTPT (Consumer) 5/5 AMP|2001|NOS|47193.09|110
+# LT CT and TVM Meters
+|LT CT 400/5 AMP|28|NOS|358.06|111
+|LT CT 300/5 AMP|28|NOS|358.06|112
+|LT CT 200/5 AMP|583|NOS|699.71|113
+|LT CT 150/5 AMP|253|NOS|285.80|114
+|LT CT 100/5 AMP|583|NOS|657.83|115
+|LT CT 75/5 AMP|339|NOS|362.25|116
+|LT CT 60/5 AMP|339|NOS|362.25|117
+|LT CT 50/5 AMP|339|NOS|362.25|118
+ltct100|LT CT Ring Type 100/5 AMP|1105|NOS|465.75|119
+|LT CT Ring Type 200/5 AMP|2050|NOS|603.87|120
+|H T TVM STATIC METER 'A Type'|1572|NOS|3553.50|121
+|H T TVM STATIC METER 'B Type'|2008|NOS|4772.50|122
+|H T TVM STATIC METER 'C Type'|2008|NOS|4772.50|123
+lttvm|L T TRIVECTOR METER ( STATIC)|2051|NOS|4312.50|124
+# Poly Propylene Rope
+|PP Rope 14MM|647|KG|140.27|125
+|PP Rope 16MM|647|KG|140.27|126
+|PP Rope 20MM|647|KG|140.27|127
+|PP Rope 28MM|647|KG|140.27|128
+# Conductor
+weasel|ACSR WEASEL|2055|KM|33701.10|129
+|AAAC WEASAL|1317|KM|21533.28|130
+rabbit|ACSR RABBIT|2024|KM|57238.26|131
+panther|ACSR PANTHER|1729|KM|241724.35|132
+dog|ACSR DOG (Addl.)|1851|KM|114894.48|133
+|LT XLPE Insulated Rabbit Conductor|1907|KM|75215.95|134
+|HT XLPE Insulated Rabbit Conductor|1288|KM|93759.35|135
+# 33 KV XLPE Cable (armoured)
+c33_300|33 KV XLPE Cable 3C 300 SQ MM|1904|KM|2196373.71|136
+# 11 KV XLPE Cable 3 Core (armoured)
+c11_300|11 KV XLPE Cable 3C 300 SQ MM|JP1701|KM|982330.00|137
+c11_185|11 KV XLPE Cable 3C 185 SQ MM|2052|KM|1216889.93|138
+c11_120|11 KV XLPE Cable 3C 120 SQ MM|JP1701|KM|354923.90|139
+c11_70|11 KV XLPE Cable 3C 70 SQ MM|1791|KM|665608.50|140
+|11 KV XLPE Cable 3C 50 SQ MM|841|KM|362711.15|141
+|11 KV XLPE Cable 3C 35 SQ MM|361|KM|449477.55|142
+# LT XLPE 4 Core Cable (armoured)
+|LT XLPE 4C Armoured Cable 185 SQ MM|2036|KM|1048362.91|143
+|LT XLPE 4C Armoured Cable 120 SQ MM|922|KM|413676.53|144
+|LT XLPE 4C Armoured Cable 95 SQ MM|1025|KM|334070.50|145
+|LT XLPE Insulated, PVC Sheathed armourd 4c x 10 sqmm|1026|KM|77306.12|146
+# LT XLPE PVC Armoured Cable
+|LT XLPE PVC Armoured Cable 4Cx400 Sqmm|2036|KM|1997082.99|147
+|LT XLPE PVC Armoured Cable 4Cx300 Sqmm|1025|KM|960946.66|148
+|LT XLPE PVC Armoured Cable 4Cx50 Sqmm|922|KM|197102.47|149
+# LT PVC Armoured Cable (4 core)
+|LT PVC Armoured Cable 4C 50 SQ MM|2088|KM|259189.21|150
+|LT PVC Armoured Cable 4C 25 SQ MM|2088|KM|178581.20|151
+|LT PVC Armoured Cable 4C 16 SQ MM|2088|KM|129320.11|152
+lt4c10arm|LT PVC Armoured Cable 4C 10 SQMM|2088|KM|106560.90|153
+|LT PVC Armoured Cable 4C 6 SQ MM|2021|KM|71649.60|154
+|LT XLPE Insulated, PVC Sheathed armourd 4c x 10 sqmm|1026|KM|77306.12|155
+|P.V.C. Armoured Cable( 2C X 4 SQMM )|1934|KM|53872.90|156
+# PVC 3.5 Core LT Cable (unarmoured)
+|PVC 3.5C LT Cable 400 SQ MM|JP1701|KM|680627.50|157
+|PVC 3.5C LT Cable 300 SQ MM|362|KM|622711.64|158
+|PVC 3.5C LT Cable 185 SQ MM|362|KM|369120.28|159
+|PVC 3.5C LT Cable 150 SQ MM|3|KM|339727.71|160
+|PVC 3.5C LT Cable 120 SQ MM|362|KM|247158.18|161
+|PVC 3.5C LT Cable 95 SQ MM|362|KM|197288.25|162
+|PVC 3.5C LT Cable 70 SQ MM|362|KM|150163.78|163
+# PVC Cable 4 Core (unarmoured)
+|PVC 4C Cable 50 SQMM (Unarmoured)|363|KM|118931.26|164
+|PVC 4C Cable 25 SQMM (Unarmoured)|200|KM|75993.75|165
+|PVC 4C Cable 16 SQMM (Unarmoured)|3|KM|54736.52|166
+|PVC 4C Cable 10 SQMM (Unarmoured)|3|KM|38966.49|167
+# PVC Cable 2 Core (unarmoured)
+|PVC 2C Cable 4.0 SQMM (Unarmoured)|347|KM|8803.30|168
+|PVC 2C Cable 2.5 SQ MM (Unarmoured)|347|KM|6190.22|169
+# LT Aerial Bunched Cable with H/W
+|LT AB Cable with H/W 1CX16+25 SQ MM|249|KM|28890.37|170
+|LT AB Cable with H/W 1CX25+25 SQ MM|249|KM|33111.26|171
+|LT AB Cable with H/W 3CX50+35 SQ MM|206|KM|87629.36|172
+# LT AB Cable (insulated messenger)
+|LT AB Cable (Ins. Messenger) 1 Cx25+25 sq mm|293|KM|30369.76|173
+|LT AB Cable (Ins. Messenger) 1 Cx35+25 sq mm|293|KM|35466.28|174
+|LT AB Cable (Ins. Messenger) 3 Cx25+25 sq mm|293|KM|58207.12|175
+|LT AB Cable (Ins. Messenger) 3 Cx35+25 sq mm|293|KM|73618.41|176
+# LT XLPE AB Cable (bare messenger)
+ab3c50|LT XLPE AB Cable (Bare Messenger) 3 Cx 50+35 sq mm|2073|KM|197800.00|177
+ab3c25|LT XLPE AB Cable (Bare Messenger) 3 Cx25+25 sq mm|2073|KM|112700.00|178
+ab1c25|LT XLPE AB Cable (Bare Messenger) 1 Cx25+25 sq mm|1969|KM|59800.00|179
+# Accessories for AB Cable
+abcsus|ABC SUSPENSION CLAMP|1562|NOS|276.00|180
+abcdead|ABC DEAD END CLAMP|1562|NOS|316.25|181
+|LT I.P.C TYPE A|1273|NOS|43.86|182
+|LT I.P.C TYPE B|1273|NOS|52.67|183
+# Line Material (insulators and pins)
+|33 KV PIN Insulator|1928|NOS|437.00|184
+|11 KV Composite Polymer PIN Insulator|2079|NOS|163.73|185
+pin11only|11 KV PIN Insulator|2044|NOS|70.23|186
+|LT PIN Insulator|2083|NOS|40.08|187
+|33 KV G.I. PIN|1901|NOS|224.25|188
+fpin11|11 KV G.I. PIN|1881|NOS|102.98|189
+|LT G.I. PIN|2084|NOS|54.05|190
+# Disc Insulators and Hardware
+|11 KV Disc Insulator (B&S) 120 KN|2034|NOS|765.90|191
+|33 KV 45 KN B&S Type Composite Polymer Insulator|1853|NOS|202.19|192
+|11 KV 45 KN B&S Type Disc|2056|NOS|484.13|193
+disc11|11 KV Disc Insulator (T&C) 45 KN|1882|NOS|430.10|194
+|11 KV 45 KN (T&C) Type Composite Polymer Insulator|1883|NOS|133.56|195
+|Hardware SetFor(B&S)|1854|NOS|678.50|196
+hw45tc|Hardware SetFor(T&C)|1884|NOS|171.35|197
+ltshackle|LT Shackle Insulator|2083|NOS|39.27|198
+ltshw|LT Shackle H/W|2084|NOS|54.64|199
+|33 KV Stay Insulator|1902|NOS|57.67|200
+stayins|11KV Stay Insulator|1885|NOS|46.00|201
+|Hardware Set for B&S (Panther) 120 KN|2035|NOS|1248.44|202
+# Post Insulators
+|Post Insulator 2 x 24 KV|2000|NOS|550.71|203
+|Post Insulator 24 KV|1887|NOS|515.66|204
+|Post Insulator 12 KV|1564|NOS|248.33|205
+# Isolating Switches
+|33 KV Single Phase With P.I.|172|NOS|6435.00|206
+|33 KV 630AWith EB & P.I|172|NOS|19993.85|207
+|33 KV 800A W/O EB With PI|2002|SET|43067.50|208
+|Fixed Contact Assembly (Jaw 33 KV Isolator)|1917|NOS|2321.28|209
+|Moving Contact Assembly ( Pipe 33 KV Isolator)|1917|NOS|3346.83|210
+|11 KV 400A With EB|JP2532|NOS|7262.32|211
+|11 KV 400A W/O EB & P.I|JP2532|NOS|5558.99|212
+|Fixed Contact Assembly ( Jaw 11 KV Isolator)|1917|NOS|1006.22|213
+|Moving Contact Assembly (Pipe 11 KV Isolator)|1917|NOS|1300.20|214
+sfu3|11 KV Switch fuse unit|312|SET|13311.25|215
+|11 KV 400A W/O EB With PI|1887|SET|20969.11|216
+|11 KV ROSTERING SWITCH (ISOLATOR WITH 12 KV PI)|1564|NOS|18975.00|217
+# Horn Gap Fuse
+|Horn Gap Fuse 33 KV With PI|2064|SET|11776.00|218
+hgfuse11|Horn Gap Fuse 11 KV With PI (3-Phase)|1998|NOS|5965.05|219
+dofuse11|11 KV 3 PHASE D.O. FUSE SET CUM ISOLATOR|616|SET|3645.50|220
+# 33 KV Current Transformer
+|33 KV CT 240-120-60/5-5-5 AMP|1411|NOS|32893.68|221
+|33 KV CT 400-200-100/5-5 A|1926|NOS|40504.15|222
+# Lightning Arrester
+|Lightning Arrester 30 KV 10 KA Station class|1895|NOS|4341.45|223
+|Lightning Arrester 9 KV/10 KA|890|NOS|1272.25|224
+|Lightning Arrester 9 KV/10 KA Distribution Class|890|NOS|609.42|225
+|Lightning Arrester 9 KV/10 KA Feeder Type|JP2419|NOS|732.46|226
+# Circuit Breakers
+|36 KV OutDoor VCB Kiosk|2790|NOS|1020464.00|227
+|12 KV OutDoor VCB Kiosk|2792|NOS|384583.00|228
+|11 KV RMU (2LBS+1 VCB)|2793|NOS|589422.15|229
+|12 KV I/D Type VCB(One I/C & Four O/G )|365|SET|1844140.00|230
+|12 KV Auto Recloser|358|NOS|26630.01|231
+# C&R Panels
+|33 KV C&R Panel For Feeder (Controlling for two feeder)|882|NOS|115704.40|232
+|33 KV C&R Panel For Transformer(for controlling two transformers)|882|NOS|141929.47|233
+|11 KV C&R Panel For Two Feeder|104|NOS|88094.60|234
+|11 KV C&R Panel For Single Feeder|104|NOS|48792.20|235
+# LT Pillar Box
+|L.T. 3-PHASE PILLER BOX 400 AMP|924|NOS|35466.00|236
+|LT DIST. BOX FOR MAIN LINE & SERVICE CONNECTION 100 Amp.|1015|NOS|15226.00|237
+|LT DIST. BOX FOR CHANG OVER SYSTEM|617|NOS|9905.80|238
+# 11 KV Capacitor Bank
+|11 KV Capacitor Bank 2 MVAR|795|NOS|835107.40|239
+|11 KV Capacitor Bank 1.2 MVAR|245|NOS|642613.10|240
+# LT Power Capacitor
+|12 KVAR( Gass fild)|372|NOS|1945.80|241
+|L.T. Shunt Capacitor 3 KVAR|1284|NOS|515.74|242
+|L.T. Shunt Capacitor 6 KVAR|1284|NOS|874.00|243
+|L.T. Shunt Capacitor 9 KVAR|1284|NOS|1257.07|244
+# Battery Set and Charger
+|Battery Set 110 VOLT 120 AMP|1251|NOS|110107.34|245
+|Battery Charger 110 VOLT 120 AMP|1021|NOS|65538.90|246
+# GI Earth Wire
+|GI Earth Wire 6 S.W.G(5 mm)|1906|MT|91597.50|247
+earthwire8|GI Earth Wire 8 S.W.G(4 mm)|1906|MT|91529.65|248
+# GI Stay Wire
+|GI Stay Wire 7/8 S.W.G (7 / 4.0 mm)|1855|MT|100050.00|249
+staywire|GI Stay Wire 7/10 S.W.G (7 / 3.15 mm)|1993|MT|91712.49|250
+# GI Stay Set
+stayset20|GI Stay Set 20 X 2400 mm|1903|SET|1351.25|251
+stayset|GI Stay Set 16 X 1800 mm|1946|SET|753.22|252
+# Earthing Set
+earthing|M.S.Rod Type Earthing Set|1952|SET|803.34|253
+|M.S.Pipe Type Earthing Set (GI Type)|831|NOS|834.91|254
+# 33 KV XLPE Cable Box
+|33 KV Cable Box Out Door Type 3X 300sq. mm H.S|2053|NOS|3528.20|255
+|33 KV Cable Box In Door Type 3x300 Sq mm HS|985|NOS|3395.12|256
+|33 KV Cable Box 3X 300sq. mm H.S S.T. JOINT|2053|NOS|10479.28|257
+# 11 KV XLPE Cable Box
+|11 KV Cable Box 3X300 H.S.OUTDOOR TYPE|985|NOS|1229.58|258
+|11 KV Cable Box 3x300 H.S. INDORE TYPE|985|NOS|1086.75|259
+|11 KV Cable Box 3x300 St. Through Joint|985|NOS|3795.00|260
+cjk185out|11 KV Cable Box 3X185 H.S.OUTDOOR TYPE|2053|NOS|1017.75|261
+cjk185in|11 KV Cable Box 3x185 H.S. INDOOR TYPE|985|NOS|869.40|262
+stj185|11 KV Cable Box 3x185 St. Through Joint|2053|NOS|3053.25|263
+cjk120out|11 KV Cable Box 3X120 H.S.OUTDOOR TYPE|985|NOS|931.50|264
+cjk120in|11 KV Cable Box 3x120 H.S. Indoor Type|985|NOS|869.40|265
+stj120|11 KV Cable Box 3X120 H.S. ST JOINT|985|NOS|3105.00|266
+|11 KV Cable Box 3x70 H.S. out door Type|1520|NOS|788.14|267
+|11 KV Cable Box 3x70 H.S. indoor Type|761|NOS|924.21|268
+|11 KV Cable Box 3x70 St. Through Joint|1520|NOS|2252.40|269
+|11 KV Cable Box 3X50 H.S. OUT DOOR TYPE|761|NOS|1117.79|270
+|11 KV Cable Box 3X 50 H.S. INDOOR TYPE|761|NOS|918.18|271
+|11 KV Cable Box 3X 50 St. Through Joint|761|NOS|3316.85|272
+|11 KV Cable Box 3X35 H.S. OUT DOOR TYPE|578|NOS|1171.85|273
+|11 KV Cable Box 3X 35 H.S. INDOOR TYPE|578|NOS|956.80|274
+|11 KV Cable Box 3X 35 St. Through Joint|578|NOS|3473.00|275
+# TC Fuse Wire
+|TC Fuse Wire 100 AMP|2039|KG|1281.61|276
+|TC Fuse Wire 80 AMP|1636|KG|827.77|277
+|TC Fuse Wire 63 AMP|2039|KG|1281.61|278
+|TC Fuse Wire 40 AMP|1636|KG|827.77|279
+|TC Fuse Wire 32 AMP|1462|KG|841.34|280
+|TC Fuse Wire 25 AMP|2039|KG|1287.15|281
+|TC Fuse Wire 20 AMP|2039|KG|1294.52|282
+|TC Fuse Wire 16 AMP|1462|KG|841.34|283
+|TC Fuse Wire 10 AMP|2039|KG|1296.03|284
+|TC Fuse Wire 6 AMP|2039|KG|1374.25|285
+|TC Fuse Wire 2.5 AMP|2039|KG|1489.25|286
+# HRC Fuse Link with Base
+|HRC Fuse Link with Base 400AMP|824|NOS|191.46|287
+|HRC Fuse Link with Base 315AMP|824|NOS|185.77|288
+|HRC Fuse Link with Base 250 AMP|824|NOS|118.89|289
+|HRC Fuse Link with Base 200 AMP|824|NOS|118.89|290
+|HRC Fuse Link with Base 160 AMP|212|NOS|128.80|291
+|HRC Fuse Link with Base 100 AMP|824|NOS|57.64|292
+# HRC Fuse Links
+|HRC Fuse Link 400AMP|2059|NOS|469.52|293
+|HRC Fuse Link 315 AMP|824|NOS|193.20|294
+|HRC Fuse Link 250 AMP|2059|NOS|256.47|295
+|HRC Fuse Link 200 AMP|824|NOS|118.89|296
+|HRC Fuse Link 160 AMP|690|NOS|60.69|297
+|HRC Fuse Link 100 AMP|1794|NOS|171.93|298
+# HRC Fuse Base
+|HRC Fuse Base 400 AMP|2059|NOS|568.58|299
+|HRC Fuse Base 315 AMP|824|NOS|266.18|300
+|HRC Fuse Base 250 AMP|2059|NOS|432.88|301
+|HRC Fuse Base 200 AMP|824|NOS|220.11|302
+|HRC Fuse Base 160 AMP|690|NOS|77.05|303
+|HRC Fuse Base 100 AMP|1794|NOS|197.23|304
+# Aluminium Lugs
+|Aluminium Lug 300 SQ MM|2060|NOS|67.85|305
+|Aluminium Lug 185 SQ MM|2015|NOS|31.40|306
+|Aluminium Lug 150 SQ MM|867|NOS|13.92|307
+|Aluminium Lug 120 SQ MM|2015|NOS|20.27|308
+|Aluminium Lug 95 SQ MM|867|NOS|7.69|309
+|Aluminium Lug 70 SQ MM|867|NOS|6.06|310
+|Aluminium Lug 50 SQ MM|867|NOS|4.30|311
+# Transformer Oil and Testing
+|EHV GRADE - II TRANSFORMER OIL|2020|KL|102385.65|312
+|OIL TESTING SET|627|SET|358866.34|313
+|TRANSFORMER OIL FILTER M/C|58|NOS|259095.00|314
+# MS Nut and Bolts
+|MS Nut & Bolt 10" X 5/8" (16X250mm)|1843|MT|104153.38|315
+|MS Nut & Bolt 8" X 5/8" (16X200mm)|1843|MT|104153.38|316
+|MS Nut & Bolt 6" X 5/8" (16X150mm)|1843|MT|104153.38|317
+nutbolt|MS Nut & Bolt 4" X 5/8" (16X100mm)|1843|MT|104153.38|318
+|MS Nut & Bolt 2.5" X 5/8" (16X65mm)|1843|MT|104153.38|319
+|MS Nut & Bolt 2" X 5/8" (16X50mm)|549|MT|77588.95|320
+|MS Nut & Bolt 1.5" X 5/8" (16X40mm)|549|MT|77588.95|321
+# Consumables and Safety Items
+|Tube Rod 40 Watt|54|NOS|39.23|322
+|100 Watt lamp|54|NOS|8.23|323
+|60 Watt lamp|54|NOS|8.10|324
+|HPMV. 250W BULB|54|NOS|335.47|325
+|HPMV.125 W BULB|54|NOS|136.59|326
+|FIRST AID BOX|2004|NOS|1178.75|327
+|Insulated Hand GLOVES|2007|NOS|447.35|328
+|INSULATED PLIER|2003|NOS|167.68|329
+|SCREW DRIVER ( 200 x 5 mm)|2003|NOS|53.60|330
+|SCREW DRIVER ( 250 x 6 mm)|2003|NOS|57.67|331
+|SCREW DRIVER ( 300 x 8 mm)|2003|NOS|96.59|332
+|PHASE TESTER|2074|NOS|35.65|333
+|Non Contact Type AC Voltage Detector|2069|NOS|414.00|334
+|High Voltage Line Tester|772|NOS|30202.58|335
+|High Voltage Insulating Mat|2006|SQMTR|3795.00|336
+|Silicon Resuscitater|2040|NOS|621.00|337
+|WOODEN LADDER|260|NOS|540.50|338
+|Fibre Glass Extendable Ladder (6 Mt. Long)|1949|NOS|10445.51|339
+|Fibre Glass Operating Rod( with Earthing Conductor)|1950|NOS|3303.49|340
+|LED TORCH|2076|NOS|892.40|341
+|Fibre glass safety helmets|1893|NOS|125.35|342
+|EARTHING CHAIN|2005|NOS|716.45|343
+|SAFETY BELT|1010|NOS|557.75|344
+|Insulated Safety Shoes|2045|PAIRS|1013.66|345
+|RAIN COAT|1997|NOS|444.97|346
+|33 KV Danger Plate|1042|NOS|67.16|347
+|11 KV Danger Plate|1042|NOS|67.16|348
+# Measuring Instruments
+|Earth Resistance Meter (Clamp Type)|1012|NOS|69000.00|349
+|Tong Tester for protection|1012|NOS|20527.50|350
+|Tong Tester for site testing|1628|NOS|11327.50|351
+|AC Digital Clamp Meter|JP2059|NOS|7807.49|352
+|Semi Automatic meter testing Banch|343|NOS|2216625.00|353
+|Insulation registance tester MAGGER 5 kv|1927|NOS|97750.00|354
+|Digital Multi Meter|377|NOS|1841.84|355
+|T.T.R Meter|310|NOS|23381.80|356
+|TESTING TERMINAL BLOCK|153|NOS|359.38|357
+|Primery Injection Test Set|183|SET|37260.00|358
+|Secondary Injection Test Set|1913|SET|3012540.00|359
+|Universal ERSS|1920|NOS|611788.50|360
+|Automatic Meter Test Bench|1915|SET|11354154.70|361
+# Rubber Tyre, Tube and Flap
+|Rubber Tyre 10.00-20|DGS&D|NOS|7425.98|362
+|Rubber Tyre 9.00-20|DGS&D|NOS|6345.52|363
+|Rubber Tyre 7.50-16|DGS&D|NOS|3123.45|364
+|Rubber Tyre 6.00-16|DGS&D|NOS|1883.33|365
+|Rubber Tube & Flap 10.00-20|DGS&D|NOS|804.28|366
+|Rubber Tube & Flap 6.00-16|DGS&D|NOS|208.30|367
+|Rubber Tube & Flap 7.50.16|DGS&D|NOS|480.21|368
+# Metering Box
+htmbox|Metering Box (Sheet Metal) H.T TYPE|1888|NOS|36225.00|369
+mipbox|Metering Box (Sheet Metal) M.I.P SUITABLE FOR L.T. METERING|2017|NOS|7463.50|370
+|Metering Box (Sheet Metal) S.I.P.TYPE|55|NOS|807.30|371
+|Metering Box (Sheet Metal) Singal Phase|337|NOS|322.00|372
+|Metering Box (Moulded) S.I.P.Type (3 Phase)|55|NOS|735.14|373
+|Metering Box (Moulded) Single Phase|236|NOS|333.79|374
+# PVC Copper Control Cable
+|PVC Cu Control Cable 3-C/ 2,5 SQ. MM|JP2411|MTR|24.56|375
+|PVC Cu Control Cable 2-C/ 2.5 SQ. MM|348|MTR|27.90|376
+|PVC Cu Control Cable 6C/ 2.5 SQ MM|JP2411|MTR|45.11|377
+|PVC Cu Control Cable 4 C/ 6 SQMM|JP2411|MTR|63.08|378
+|PVC Cu Control Cable 4 C/ 4.0 SQMM|1028|KM|129340.27|379
+|PVC Cu Control Cable 4 C/2.5 SQ MM|1028|KM|85843.59|380
+|PVC Cu Control Cable 12C/ 2.5 SQMM|1028|KM|238529.41|381
+# PG / T Clamps
+|P.G.CLAMPS FOR WEASEL|1908|NOS|60.95|382
+|P.G.CLAMPS FOR DOG|2033|NOS|247.25|383
+|P.G.CLAMPS FOR PANTHER|1908|NOS|373.18|384
+|T.CLAMPS FOR PANTHER|1908|NOS|449.17|385
+pgrabbit|P.G.CLAMPS FOR Rabbit|1908|NOS|69.00|386
+# LT Line Spacers, Tools and MCCB
+|LT LINE SPACERS 320mm|369|NOS|14.34|387
+|LT LINE SPACERS 540mm|369|NOS|16.19|388
+|Spanner Set Double Ended Open Type|2011|NOS|569.94|389
+|Spanner Set Double Ended Ring Type|2011|NOS|1031.32|390
+|SP MCCB 25 Amp|2284|NOS|472.25|391
+|SP MCCB 80 Amp|2284|NOS|502.00|392
+|SP MCCB 135 Amp|1491|NOS|603.75|393
+|TP MCCB 32 Amp|2019|NOS|960.76|394
+|TP MCCB 40 Amp|2019|NOS|967.54|395
+|TP MCCB 63 Amp|2019|NOS|994.68|396
+|TP MCCB 110 Amp|1598|NOS|1355.64|397
+|TP MCCB 160 Amp|1598|NOS|1592.75|398
+# Sealing Material
+|Sealing Wire|220|KG|78.19|399
+|Metering Lead Seal|220|NOS|0.67|400
+|Tampar evident Poly Carbonate Seal Anchor Type|2013|NOS|5.12|401
+|Sticker seal with hologram|1889|NOS|4.07|402
+|Hologram|654|NOS|0.13|403
+# PCC Pole
+pole8|PCC POLE 8 METRE LONG|1414|NOS|1956.15|404
+pole9_400|PCC POLE For 9 METRE LONG (400 KG)|1937|NOS|4066.93|405
+pole9_200|PCC POLE For 9 METRE LONG (200 KG)|2032|NOS|2875.00|406
+# Combined sets (made from the items above)
+pin11|11 KV Pin Insulator with 11 KV G.I. Pin (S.No. 186 + 189)||NOS|173.21|186+189
+disc11hw|11 KV Disc Insulator 45 KN T&C with H/W (S.No. 194 + 197)||NOS|601.45|194+197
+# Not in this SIR - enter your rate
+c33_1c400|33 KV XLPE Cable 1C x 400 sqmm (not in this SIR - enter rate)||KM|0|
+lt4c70arm|LT XLPE Armoured Cable 4C x 70 sqmm (not in this SIR - enter rate)||KM|0|
+ab3c16|LT AB Cable 3C x 16+25 sqmm (not in this SIR - enter rate)||KM|0|
+pole11_400|PCC Pole 11 Mtr 400 Kg (not in this SIR - enter rate)||NOS|0|
+ssstr_3sp|11/0.4 KV S/S Structure 3-Ph single pole 10/16 KVA (not in this SIR - enter rate)||SET|0|
+ch18|1.8 Mtr Channel Bracket with Clamp (not in this SIR - enter rate)||SET|0|
+sfu1|11 KV 1-Ph Switch Fuse Unit (not in this SIR - enter rate)||SET|0|
+httvm02|HT TVM Static Meter (choose A/B/C type) (not in this SIR - enter rate)||NOS|0|
+ctpt60|11 KV CTPT Set 60/5 A (not in this SIR - enter rate)||NOS|0|
+ctpt2p5|11 KV CTPT Set 2.5/5 A (not in this SIR - enter rate)||NOS|0|
+# Other charges
+vermic|Vermiculite Charge (as per ACR)|ACR|MTR|335.39|
+`;
+let _SIR_JD = null;
+const discomOf = () => (typeof PROFILE === 'object' && PROFILE && PROFILE.discom) || 'JVVNL';
+function sirBase() { return discomOf() === 'JdVVNL' ? (_SIR_JD || (_SIR_JD = parseSIR(SIR_TEXT_JD))) : SIR_BASE; }
+async function applyDiscomRates(quiet) {
+  const sp = await Store.get('sirPack');
+  App.pack = sp || (discomOf() === 'JVVNL' ? await Store.get('ratePack') : null) || null;
+  if (!(App.pack && App.pack.src === 'import')) { const L = App.settings.sirLabel; if (!L || L === SIR_LABEL || L === 'JdVVNL SIR April 2026') App.settings.sirLabel = sirDefault(); }
+  if (!quiet) { rebuildCat(); saveSettings(); }
+}
+function sirDefault() { return discomOf() === 'JdVVNL' ? 'JdVVNL SIR April 2026' : SIR_LABEL; }
+function SIGN() { return `J.En. (O&M), ${discomOf()} ${(typeof PROFILE === 'object' && PROFILE && PROFILE.subdiv) || ''}`.trim(); }
+
 
 /* ===== FI directory (JEn O&M Paota), shared 05.09.2026 ===== */
 let FI_DATA = [
@@ -2784,7 +3284,8 @@ const DEFAULT_SETTINGS = {
 const App = { settings: clone(DEFAULT_SETTINGS), overrides: {}, custom: [], estimates: [], signs: { jen: null, aen: null }, maps: {}, slds: {},
   cat: null, view: 'home', est: null, sheetOpen: false, ignorePop: false, f: { saved: '', type: 'all', rates: '', edited: false, fi: '' }, aiBlk: 'A', lastSaved: 0 };
 function rebuildCat() {
-  const base = App.pack && App.pack.rates ? SIR_BASE.map(x => App.pack.rates[x.key] ? Object.assign({}, x, { rate: App.pack.rates[x.key] }) : x) : SIR_BASE;
+  { const t = document.getElementById('sirTag'); if (t && App.settings) t.textContent = App.settings.sirLabel || ''; }
+  const base = App.pack && App.pack.rates ? sirBase().map(x => App.pack.rates[x.key] ? Object.assign({}, x, { rate: App.pack.rates[x.key] }) : x) : sirBase();
   App.cat = makeCatalog(base, App.overrides, App.custom);
 }
 function cfg() { const s = App.settings; return { office: s.office, xen: s.xen, aen: s.aen, jen: s.jen, sirLabel: s.sirLabel }; }
@@ -2800,7 +3301,9 @@ async function loadAll(skipOffice) {
   if (s) App.settings = Object.assign(officeDefaults(), s, { norms: Object.assign({}, DEFAULT_NORMS, s.norms || {}), signDefault: Object.assign({}, DEFAULT_SETTINGS.signDefault, s.signDefault || {}), tpl: Object.assign({}, DEFAULT_SETTINGS.tpl, s.tpl || {}) });
   if (typeof applyTheme === 'function') applyTheme();
   App.overrides = (await Store.get('rates')) || {};
-  { const sp = await Store.get('sirPack'); App.pack = sp || (await Store.get('ratePack')) || null; }
+  await applyDiscomRates(true);
+  { const T = App.settings.tpl || {}, sg = SIGN(), hd = 'JEn (O&M) ' + ((PROFILE && PROFILE.subdiv) || '');
+    Object.keys(T).forEach(k => { if (typeof T[k] === 'string') T[k] = T[k].split('J.En. (O&M), JVVNL Paota').join(sg).split('JEn (O&M) Paota').join(hd); }); }
   App.custom = (await Store.get('custom')) || [];
   App.estimates = (await Store.get('estimates')) || [];
   App.signs.jen = await Store.get('sign:jen'); App.signs.aen = await Store.get('sign:aen'); App.signs.xen = await Store.get('sign:xen');
@@ -3167,7 +3670,7 @@ async function sirImport(file) {
 async function sirUndo() {
   App.pack = (await Store.get('sirPackPrev')) || null; await Store.set('sirPack', App.pack && App.pack.src === 'import' ? App.pack : null);
   App.custom = (App.custom || []).filter(c => c.cat !== 'SIR import'); await Store.set('custom', App.custom);
-  App.settings.sirLabel = (App.pack && App.pack.label) || 'SIR 346/01.06.2026'; saveSettings(); rebuildCat(); closeSheet(true); render(); toast('Back to the earlier rates');
+  App.settings.sirLabel = (App.pack && App.pack.label) || sirDefault(); saveSettings(); rebuildCat(); closeSheet(true); render(); toast('Back to the earlier rates');
 }
 function renderEditor() {
   const e = App.est; if (!e) { go('home'); return; }
@@ -3897,7 +4400,7 @@ function renderRateList() {
   $('#rlist').innerHTML = html || '<p class="empty" style="padding:14px">Nothing matches.</p>';
 }
 function openRate(key) {
-  const it = App.cat.byKey[key], base = SIR_BASE.find(b => b.key === key); if (!it) return;
+  const it = App.cat.byKey[key], base = sirBase().find(b => b.key === key); if (!it) return;
   openSheet(`<div class="h3">${esc(it.name)}</div><p class="hint">${base ? `SIR rate ${fmtRate(base.rate)} per ${esc(base.unit)}${base.sirUnit === 'KM' || base.sirUnit === 'MT' ? ` (${base.sirRate} per ${base.sirUnit})` : ''}, TN ${esc(base.tn)}` : 'Your own item'}</p>
     <div class="grid2"><label class="f span2"><span>Name printed on estimate</span><input id="r_name" value="${esc(it.name)}"></label>
     <label class="f"><span>Rate per ${esc(it.unit)}</span><input id="r_rate" type="number" step="any" inputmode="decimal" value="${it.rate}"></label>
@@ -3909,7 +4412,7 @@ function openRate(key) {
     <button class="btn btn-quiet" data-act="closesheet">Cancel</button></div>`, 'Edit rate');
 }
 async function saveRate(key) {
-  const base = SIR_BASE.find(b => b.key === key);
+  const base = sirBase().find(b => b.key === key);
   const name = $('#r_name').value.trim(), rate = num($('#r_rate').value), sno = $('#r_sno').value.trim();
   if (!name || !(rate > 0)) { toast('Enter a name and a rate above zero'); return; }
   if (base) {
@@ -3935,7 +4438,7 @@ function viewMore() {
     <div><b>${lbl}</b><div class="btnrow" style="margin-top:6px"><label class="btn btn-sm btn-ink">${App.signs[role] ? 'Change' : 'Add photo'}<input type="file" accept="image/*" data-file="sign-${role}" hidden></label>${App.signs[role] ? `<button class="btn btn-sm btn-danger" data-act="delsign" data-role="${role}">Remove</button>` : ''}</div>
     ${chk('Tick by default on new estimates', 'signDefault.' + role, s.signDefault[role])}</div></div>`;
   return `<div class="wrap">
-  <h1 class="h2">Settings and tools</h1>
+  <h1 class="h2">Settings and tools</h1><div class="hint" style="margin:-4px 0 10px">JenBuddy version ${APP_VERSION}</div>
   ${typeof cloudCard === 'function' ? cloudCard() : ''}
   <div class="card"><div class="h3">Directory</div><div class="reg" style="margin:0"><button class="reg-row" data-go="fi"><span class="reg-ic">${I.fi}</span><span class="reg-t">Feeder in-charge list</span><span class="reg-d">Tap to call or WhatsApp</span></button></div></div>
   <div class="card"><div class="h3">Signatures</div><p class="hint">Sign on plain white paper with a dark pen and take a photo. The background is removed automatically.</p>${sig('jen', 'J.En. (mine)')}${sig('aen', 'A.En.')}</div>
@@ -4354,7 +4857,7 @@ function fiGroupSend(src) {
 /* save every FI as a phone contact, so a WhatsApp broadcast list can be made in one go */
 function fiVcf() {
   const rec = fiRecipients('all');
-  const v = rec.map(r => `BEGIN:VCARD\nVERSION:3.0\nN:${(r.name || r.mob).replace(/[;,]/g, ' ')};FI;;;\nFN:FI ${(r.name || r.mob).replace(/[;,]/g, ' ')} (${r.feeders.slice(0, 2).join(', ').replace(/[;,]/g, ' ')})\nORG:JVVNL Paota\nTEL;TYPE=CELL:+91${r.mob}\nEND:VCARD`).join('\n');
+  const v = rec.map(r => `BEGIN:VCARD\nVERSION:3.0\nN:${(r.name || r.mob).replace(/[;,]/g, ' ')};FI;;;\nFN:FI ${(r.name || r.mob).replace(/[;,]/g, ' ')} (${r.feeders.slice(0, 2).join(', ').replace(/[;,]/g, ' ')})\nORG:${discomOf()} ${(PROFILE && PROFILE.subdiv) || ''}\nTEL;TYPE=CELL:+91${r.mob}\nEND:VCARD`).join('\n');
   deliver(new TextEncoder().encode(v), 'JEn_Paota_FI_contacts.vcf', 'text/vcard', 'Contacts');
   openSheet(`<p style="font-size:15px">${rec.length} FI contacts saved as a file.</p>
     <ol class="steps"><li>Open the downloaded file on the phone and tap Import — all FI numbers go into your contacts.</li>
@@ -4687,7 +5190,7 @@ function outTopMsg() {
   top.sort((a, b) => b.amt - a.amt);
   return `JEn (O&M) Paota — highest 10 outstanding cases (${o.date})\n\n` +
     top.slice(0, 10).map((c, i) => `${i + 1}. ${c.kno} ${c.name} — ${groupIN(String(c.amt))}\n   ${c.f.name} / ${c.f.fi || 'FI not set'}`).join('\n') +
-    `\n\nJ.En. (O&M), JVVNL Paota`;
+    `\n\n${SIGN()}`;
 }
 function fiPreviewSend(text, title, mob) {
   openSheet(`<p class="hint">This is exactly what will be sent. Change anything before sending.</p>
@@ -5010,7 +5513,26 @@ FI_ACTS.fiimp = () => openSheet(`<p class="hint">Any Excel, CSV or PDF with the 
 const ROLES = { jen: 'J.En. (O&M)', aen: 'A.En. (O&M)' };
 /* ============ OFFICES — one app, many sub-divisions ============ */
 const OFF = { list: [], active: 'paota' };
-async function officeLoad() {
+/* ---- the ready offices (Paota, Nareda) belong to their owner's account only ---- */
+function isReadyKey(k) { return (typeof OFFICE_BASE !== 'undefined' ? OFFICE_BASE : []).some(b => b.key === k); }
+function isReadyOwner() {
+  if (typeof clOn !== 'function' || !clOn()) return true;                  // not signed in: the automatic tests and the owner's old phone
+  const uid = CL.cfg.session && CL.cfg.session.user_id, own = (typeof CL_BUILT_IN === 'object' && CL_BUILT_IN && CL_BUILT_IN.readyOwners) || {};
+  return Object.values(own).some(a => (a || []).includes(uid));
+}
+async function stripReady() {
+  if (isReadyOwner() || typeof OFF !== 'object') return;
+  OFF.list.forEach(o => { if (o.built) { o.confirmed = false; o.owned = false; o.seen = false; } });
+  const cur = OFF.list.find(x => x.key === OFF.active);
+  if (cur && cur.built) {
+    const mine = OFF.list.find(o => !o.built && (o.confirmed || o.seen));
+    if (mine) { OFF.active = mine.key; await Store.set('activeOffice', mine.key); officeApply(mine.key); }
+    else { const t = document.querySelector('.tb-office'); if (t) t.textContent = 'JenBuddy'; }
+  }
+}
+
+async function officeLoad(...a) { const r = await officeLoad0(...a); await stripReady(); return r; }
+async function officeLoad0() {
   const saved = await Store.get('offices');
   OFF.list = OFFICE_BASE.map(o => Object.assign({}, o));
   (saved || []).forEach(o => { const i = OFF.list.findIndex(x => x.key === o.key); if (i >= 0) OFF.list[i] = Object.assign(OFF.list[i], o); else OFF.list.push(o); });
@@ -5136,9 +5658,17 @@ const officesInUse = () => OFF.list.filter(o => !o.built || o.confirmed || o.own
 async function officeEnsure() {
   if (/nosetup/.test(location.hash)) return;            // used only by the automatic tests
   const o = OFF.list.find(x => x.key === OFF.active) || {};
-  if (o.confirmed || App.sheetLock) return;
+  if ((o.confirmed && !(o.built && !isReadyOwner())) || App.sheetLock) return;
+  if (typeof clOn === 'function' && clOn() && navigator.onLine && !OFF._pulled) {
+    OFF._pulled = 1;
+    for (let i = 0; i < 40 && CL.busy; i++) await new Promise(r => setTimeout(r, 500));
+    if (!(App.estimates || []).length) { CL.cfg.since = 0; }
+    await clSync(true); if (typeof officeLoad === 'function') await officeLoad();
+    const mine = OFF.list.filter(x => officeVisible(x) && (x.confirmed || x.owned));
+    if (mine.length) { if (!mine.some(x => x.key === OFF.active)) { await Store.set('activeOffice', mine[0].key); officeApply(mine[0].key); } await officeReload(); return; }
+  }
   const fresh = !(await Store.get('activeOffice')) && !(App.estimates || []).length && !(await Store.get('settings'));
-  officeForm(!fresh, true);                             // a new phone makes its office; an old one confirms what it has
+  officeForm(!fresh && !(o.built && !isReadyOwner()), true);                             // a new phone makes its office; an old one confirms what it has
 }
 async function officeFirstRun() { return officeEnsure(); }
 
@@ -5331,7 +5861,7 @@ function taskSave(sendIt) {
   if (sendIt && t.mob) taskSend(U.tasks[0].id);
 }
 function taskMsg(t) {
-  return `JEn (O&M) Paota — TASK\n#${t.id}\n${TASK_KINDS[t.kind] || 'Task'}: ${t.title}\n${t.detail ? t.detail + '\n' : ''}Feeder: ${t.feeder}${t.due ? `\nDue: ${dISO(t.due)}` : ''}\n\nKaam poora hone par app me Done dabaye ya reply karein.\nJ.En. (O&M), JVVNL Paota`;
+  return `JEn (O&M) Paota — TASK\n#${t.id}\n${TASK_KINDS[t.kind] || 'Task'}: ${t.title}\n${t.detail ? t.detail + '\n' : ''}Feeder: ${t.feeder}${t.due ? `\nDue: ${dISO(t.due)}` : ''}\n\nKaam poora hone par app me Done dabaye ya reply karein.\n${SIGN()}`;
 }
 function taskSend(id) { const t = U.tasks.find(x => x.id === id); if (!t) return; fiPreviewSend(taskMsg(t), t.fi || 'FI', t.mob); }
 function taskDone(id) {
@@ -5464,7 +5994,7 @@ const U_ACTS = {
   },
   offedit: () => officeForm(true),
 
-  offsave: (t, d) => officeSave(!!d.edit),
+  offsave: async (t, d) => { const r = await (async () => officeSave(!!d.edit))(); await applyDiscomRates(); if (App.view) render(); return r; },
   offdel: async (t, d) => {
     if (!(await ask('Remove this sub-division from the list? Its estimates stay on the phone but will not be reachable.', 'Remove', true))) return;
     closeSheet(true); OFF.list = OFF.list.filter(x => x.key !== d.k);
@@ -6723,7 +7253,7 @@ VR_ACTS.insthow = () => {
       <li><b>Copy the link</b> from the address bar (or the share button).</li>
       <li>Open <b>Chrome</b> itself from the phone, paste the link and press Go. The address bar should show only the site name now.</li>
       <li>Chrome menu (three dots) &rarr; <b>Install app</b>. If you see <b>Add to Home screen</b>, tap it — and when Chrome asks <b>Install</b> or <b>Create shortcut</b>, choose <b>Install</b>. A shortcut always opens with the browser strip.</li>
-      <li>Close Chrome. From now on open it only from the new home screen icon (<b>JVVNL Est</b>) — never from the WhatsApp link. No browser strip, works without internet.</li>
+      <li>Close Chrome. From now on open it only from the new home screen icon (<b>JenBuddy</b>) — never from the WhatsApp link. No browser strip, works without internet.</li>
     </ol>
     <p class="hint">Installed properly, the app also shows up in the phone's app list and Settings &rarr; Apps like any other app. If it is only on the home screen and not in the app list, it is a shortcut — remove it and install again. On an iPhone use Safari &rarr; Share &rarr; Add to Home Screen.</p>
     <div class="h4" style="margin-top:12px">Check of this page</div><div id="instChk"><p class="hint">Checking…</p></div>
@@ -7104,6 +7634,7 @@ function clHookStore() {
   };
 }
 function clMark(office, key) {
+  if (!isReadyOwner() && isReadyKey(office)) return;
   if (key === 'estimates') {                            // estimates travel one by one, so two devices never overwrite each other
     const now = Date.now(), seen = new Set();
     (App.estimates || []).forEach(e => {
@@ -7156,6 +7687,7 @@ async function clPush() {
   const rows = [];
   for (const id of ids.slice(0, 60)) {
     const [office, key] = [id.slice(0, id.indexOf('|')), id.slice(id.indexOf('|') + 1)];
+    if (!isReadyOwner() && isReadyKey(office)) { delete CL.dirty[id]; continue; }
     const ts = Math.abs(CL.meta[id] || Date.now()), deleted = (CL.meta[id] || 0) < 0;
     let value = null;
     if (!deleted) {
@@ -7220,6 +7752,7 @@ async function clSync(quiet) {
 async function clUploadAll() {
   const all = typeof OFF === 'object' ? OFF.list.map(o => o.key) : [PROFILE.key], offs = [];
   for (const k of all) {                               // an office goes up if it holds anything at all
+    if (!isReadyOwner() && isReadyKey(k)) continue;
     const has = await clRaw(k, async () => ((await Store.get('estimates')) || []).length || (await Store.get('settings')) || (await Store.get('fi')) || (await Store.get('vr')));
     if (has) offs.push(k);
   }
@@ -7259,7 +7792,8 @@ async function clInit() {
   if (CL_BUILT_IN) Object.assign(CL.cfg, { url: CL_BUILT_IN.url, key: CL_BUILT_IN.key, discom: CL_BUILT_IN.discom || CL.cfg.discom });   // every J.En. uses the one project
   if (!CL.cfg.device) CL.cfg.device = 'd' + Math.random().toString(36).slice(2, 10);
   CL.meta = (await Store.get('clMeta')) || {}; CL.dirty = (await Store.get('clDirty')) || {};
-  const pk = await Store.get('ratePack'); if (pk && !(App.pack && App.pack.src === 'import')) { App.pack = pk; rebuildCat(); }
+  if (CL.cfg.session && CL.cfg.session.user_id && !(await Store.get('dataUid'))) await Store.set('dataUid', CL.cfg.session.user_id);
+  const pk = await Store.get('ratePack'); if (pk && discomOf() === 'JVVNL' && !(App.pack && App.pack.src === 'import')) { App.pack = pk; rebuildCat(); }
   clHookStore();
   if (clOn()) {
     clBadge(Object.keys(CL.dirty).length ? 'busy' : 'ok');
@@ -7317,7 +7851,35 @@ function clMarkOwned() {
   Object.keys(own).forEach(k => { if ((own[k] || []).includes(uid)) { const o = OFF.list.find(x => x.key === k); if (o && !o.owned) { o.owned = true; o.confirmed = true; mark = true; } } });
   return mark;
 }
+
+/* ---- one person's work never shows up in another person's account ---- */
+async function storeWipe(keep) {
+  if (Store.mode === 'device' && Store.db) {
+    await new Promise((res, rej) => { const tx = Store.db.transaction('kv', 'readwrite'), os = tx.objectStore('kv'), rq = os.getAllKeys();
+      rq.onsuccess = () => { (rq.result || []).forEach(k => { if (!keep.includes(k)) os.delete(k); }); }; tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  } else if (Store.mode === 'memory') { Object.keys(Store.mem).forEach(k => { if (!keep.includes(k)) delete Store.mem[k]; }); }
+}
+async function clGuardUser() {
+  const uid = CL.cfg.session && CL.cfg.session.user_id; if (!uid) return;
+  const was = await Store.get('dataUid');
+  let foreign = !!was && was !== uid;
+  if (!was) {                                   // data from before this check: only the owner's phone holds the ready offices
+    const ownsReady = (OFF.list || []).some(o => o.built && (o.owned || o.confirmed || o.seen));
+    const own = (typeof CL_BUILT_IN === 'object' && CL_BUILT_IN && CL_BUILT_IN.readyOwners) || {}, isOwner = Object.values(own).some(a => (a || []).includes(uid));
+    foreign = ownsReady && !isOwner;
+  }
+  if (foreign) {
+    await storeWipe(['cloud', 'user']);
+    CL.meta = {}; CL.dirty = {}; CL.cfg.since = 0; CL.cfg.lastSync = 0; await Store.set('cloud', CL.cfg);
+    if (typeof officeLoad === 'function') await officeLoad();
+    if (typeof officeReload === 'function') await officeReload();
+  }
+  await Store.set('dataUid', uid);
+}
 async function clAfterSignIn() {
+  await clGuardUser();
+  for (let i = 0; i < 40 && CL.busy; i++) await new Promise(r => setTimeout(r, 500));
+  if (!(App.estimates || []).length && !(await Store.get('activeOffice'))) { CL.cfg.since = 0; await Store.set('cloud', CL.cfg); }
   if (clMarkOwned()) await Store.set('offices', OFF.list.filter(officeKeep));
   await clUploadAll(); await clSync(true);
   if (typeof officeLoad === 'function') await officeLoad();
@@ -7357,7 +7919,9 @@ const CL_ACTS = {
   },
   clsync: async () => { const r = await clSync(); clRedraw(); if (r) toast(`Sent ${r.up}, received ${r.down}`); },
   clout: async () => {
-    if (!(await ask('Sign out of the cloud on this device? Your data stays on the phone.', 'Sign out'))) return;
+    if (!(await ask('Sign out of JenBuddy on this device? Your work is kept safe in the cloud.', 'Sign out'))) return;
+    try { if (navigator.onLine && Object.keys(CL.dirty || {}).length) { toast('Saving your work to the cloud…'); await Promise.race([clSync(true), new Promise(r => setTimeout(r, 12000))]); } } catch (e) {}
+    if (Object.keys(CL.dirty || {}).length && !(await ask('Some changes have not reached the cloud yet (no internet). If someone else signs in on this device, those changes will be lost. Sign out anyway?', 'Sign out anyway'))) return;
     closeSheet(true); CL.cfg.session = null; await Store.set('cloud', CL.cfg); clBadge('off');
     U.user = null; await Store.set('user', null); App.view = 'home';
     document.body.classList.add('booting'); lockScreen();
