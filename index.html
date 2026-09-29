@@ -863,7 +863,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div class="app">
   <header class="tb">
     <div class="tb-grid">
-      <div><div class="tb-office">JEn (O&amp;M) Paota</div><div class="tb-sub">Estimates, PDF and Excel</div></div>
+      <div><div class="tb-office">JenBuddy</div><div class="tb-sub">Estimates, PDF and Excel</div></div>
       <button class="tb-find" data-act="palette" aria-label="Search anything (Ctrl K)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21" stroke-linecap="round"/></svg><span>Search</span><kbd>Ctrl K</kbd></button>
       <div class="tb-right"><span class="cl-badge" id="clBadge" hidden data-st="ok" aria-label="Cloud status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 9.6 4.2 4.2 0 0 0 7 18z" stroke-linejoin="round"/></svg></span><button class="tb-theme" data-act="theme" aria-label="Switch day or night look" id="thBtn"></button>
         <div class="tb-meta">Rates<b id="sirTag"></b></div></div>
@@ -890,7 +890,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '28.09.2026 08:01';
+const APP_VERSION = '29.09.2026 11:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -1931,7 +1931,20 @@ const GSS_PAOTA = [
 ];
 const FI_PAOTA = FI_DATA;
 let GSS_INCHARGE = [], FEEDING_33KV = [];
-function useOfficeData() { FI_DATA = fiSeedFor(PROFILE.seed); GSS_INCHARGE = gssInchargeFor(PROFILE.seed); FEEDING_33KV = feeding33For(PROFILE.seed); }
+/* the ready Paota / Nareda lists belong to the owner's account only — nobody else ever gets them */
+function seedOk() {
+  if (!PROFILE.seed) return false;
+  try {
+    const signed = CL && CL.cfg && CL.cfg.session && CL.cfg.session.user_id;
+    if (signed) return isReadyOwner();
+  } catch (e) { }
+  return !!(PROFILE.owned || PROFILE.confirmed);          // not signed in: only a phone that already holds the owner's office
+}
+function vrSeedMine() { return seedOk() ? vrSeedFor(PROFILE.seed) : []; }
+function useOfficeData() {
+  const ok = seedOk();
+  FI_DATA = ok ? fiSeedFor(PROFILE.seed) : []; GSS_INCHARGE = ok ? gssInchargeFor(PROFILE.seed) : []; FEEDING_33KV = ok ? feeding33For(PROFILE.seed) : [];
+}
 const FEED33_PAOTA = [
   '132 KV GSS Ladaka Bas: 33 KV Paota line to GSS Paota',
   '132 KV GSS Ladaka Bas: 33 KV Badnagar line to GSS Badnagar and GSS Mandha',
@@ -2114,11 +2127,11 @@ function addUG(o, inp, ph) {
   if (num(inp.ugStj) > 0) o['stj' + z] = num(inp.ugStj);
 }
 function ugInfo(rows, c, opt) {
-  opt = opt || {}; let L = 0, cab = 0, cab30 = 0; const LOOP = opt.loop === '' || opt.loop == null ? 30 : Math.max(0, num(opt.loop));
-  rows.forEach(r => { if (UG_CABLE.test(r.key) && r.q && typeof r.q === 'object') { const q = num(r.q[c]); if (q > 0) { L += q; cab += r3(q * num(r.rate)); cab30 += r3(Math.min(LOOP, q) * num(r.rate)); } } });
+  opt = opt || {}; let L = 0, cab = 0, cab30 = 0;
+  rows.forEach(r => { if (UG_CABLE.test(r.key) && r.q && typeof r.q === 'object') { const q = num(r.q[c]); if (q > 0) { L += q; cab += r3(q * num(r.rate)); cab30 += r3(Math.min(30, q) * num(r.rate)); } } });
   if (!L) return null;
-  const verm = opt.verm !== false, rate = num(opt.vermRate) || 335.39, vLen = Math.max(0, r3(L - LOOP));
-  return { L, loop: LOOP, cab: r3(cab), cab30: r3(cab30), verm, rate, vLen, V: verm ? r3(vLen * rate) : r3(cab * 0.10),
+  const verm = opt.verm !== false, rate = num(opt.vermRate) || 335.39, vLen = Math.max(0, r3(L - 30));
+  return { L, cab: r3(cab), cab30: r3(cab30), verm, rate, vLen, V: verm ? r3(vLen * rate) : r3(cab * 0.10),
     label: verm ? `Vermiculite Ch @ Rs.${rate}/Mtr on ${vLen} Mtr U/G cable (V)` : 'Civil Ch @10% on U/G cable (V)' };
 }
 
@@ -2446,7 +2459,7 @@ function specConn(est, cfg, kind) {
   const n = rows.length, ugH = L.ht.ug, old = opt.oldTF && num(opt.oldTF.rate) > 0 ? opt.oldTF : null;
   const lad = (id, label, fn, b) => { const cells = [S(label, { cs: 5, al: 'l', b: !!b })]; cols.forEach((c, j) => { cells.push(S('')); cells.push(fn(AC[j], c)); }); R.push({ kind: 'lad', id, cells }); };
   lad('A', 'Total (A)', (ac, c) => Nn(L[c].A, 'amt', n ? `SUM({${ac}:i0}:{${ac}:i${n - 1}})` : '0', { b: true }), true);
-  lad('B', 'Labour Ch @10% (B)' + (ugH ? ` (U/G: only ${ugH.loop} Mtr cable + joints)` : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
+  lad('B', 'Labour Ch @10% (B)' + (ugH ? ' (U/G: only 30 Mtr cable + joints)' : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
   lad('C', 'Dismantle Ch (C)', () => NIL());
   if (ugH) lad('V', ugH.label, (ac, c) => c === 'ht' ? Nn(L.ht.V, 'amt', ugH.verm ? `ROUND(${ugH.vLen}*${ugH.rate},3)` : `ROUND(${ugH.cab}*10%,3)`) : NIL());
   lad('ABC', ugH ? 'A+B+C+V' : 'A+B+C', (ac, c) => Nn(L[c].ABC, 'amt', `SUM({${ac}:A},{${ac}:B},{${ac}:C}${ugH ? `,{${ac}:V}` : ''})`));
@@ -2558,7 +2571,7 @@ function specNC(est, cfg) {
   if (opt.matOnly) lad('GT', 'GRAND TOTAL (Material cost)', (ac, c) => Nn(L[c].GT, 'amt', `{${ac}:A}`, { b: true }), true);
   else {
   const ugH = L.ht.ug;
-  lad('B', 'Labour Ch @10% (B)' + (ugH ? ` (U/G: only ${ugH.loop} Mtr cable + joints)` : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
+  lad('B', 'Labour Ch @10% (B)' + (ugH ? ' (U/G: only 30 Mtr cable + joints)' : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
   lad('C', 'Dismantle Charge (C)' + (old ? ' @10% of ' + old.kvaLabel + ' T/F' : ''), (ac, c) => (c === 'ss' && old) ? Nn(L.ss.C, 'amt', `ROUND(${num(old.rate)}*10%,3)`) : NIL());
   const twIdx = [], hasCV = ['lt', 'ht', 'ss'].some(c => L[c].CV > 0);
   (typeof rows !== 'undefined' ? rows : e.rows).forEach((r, i) => { if (/lattice|tower/i.test(r.name || '')) twIdx.push(i); });
@@ -2612,7 +2625,7 @@ function specSH(est, cfg) {
   R.push({ kind: 'lad', id: 'TA', cells: [S('TOTAL (a) Required  /  (b) Dismantled  /  (c) Re-used', { cs: 6, al: 'l', b: true }),
     Nn(L.a, 'amt', sum('G'), { b: true }), S(''), Nn(L.b, 'amt', sum('I'), { b: true }), S(''), Nn(L.c, 'amt', sum('K'), { b: true })] });
   const t1 = ['{G:TA}', '{G:LAB}', '{G:DIS}'];
-  lad('LAB', '10% LABOUR CHARGES on (a)' + (L.ug ? ` (U/G: only ${L.ug.loop} Mtr cable + joints)` : ''), Nn(L.LAB, 'amt', L.ug ? `ROUND(({G:TA}-${L.ug.cab}+${L.ug.cab30})*10%,3)` : 'ROUND({G:TA}*10%,3)'));
+  lad('LAB', '10% LABOUR CHARGES on (a)' + (L.ug ? ' (U/G: only 30 Mtr cable + joints)' : ''), Nn(L.LAB, 'amt', L.ug ? `ROUND(({G:TA}-${L.ug.cab}+${L.ug.cab30})*10%,3)` : 'ROUND({G:TA}*10%,3)'));
   lad('DIS', '10% DISMANTLING CHARGES on (b)', Nn(L.DIS, 'amt', 'ROUND({I:TA}*10%,3)'));
   if (L.civRow) {
     const idx = rows.indexOf(L.civRow);
@@ -2749,7 +2762,7 @@ function ladderHT(rows, opt) {
     C.verm = r3(lineLen * (num(opt.vermRate) || 335.39));
     C.lab = r3((sum(svcRows) + jAmt) * 0.10);
   } else {                                             // estimates made before this change
-    const svc = num(opt.serviceLen) || 30; C.svc = svc;
+    const svc = num(opt.serviceLen) || 30;
     C.verm = r3(Math.max(0, cLen - svc) * (num(opt.vermRate) || 335.39));
     C.lab = r3((r3(Math.min(svc, cLen) * cabRate) + jAmt) * 0.10);
   }
@@ -2796,7 +2809,7 @@ function specHTSheet(est, cfg, which) {
     head('U/G CABLE WORK — costing of cable work material'); cols();
     const sm = listOf(est.rows.cable);
     lad('A', 'TOTAL', L.C.A, sm, true);
-    lad('V', `Vermiculite charges on the cable other than the ${L.C.svc || 30} Mtr loop and service line`, L.C.verm, `${L.C.verm}`);
+    lad('V', 'Vermiculite charges on the cable other than the 30 Mtr loop and service line', L.C.verm, `${L.C.verm}`);
     lad('LB', 'Labour charges @10% on the loop and service cable and the joint kits', L.C.lab, `${L.C.lab}`);
     lad('T1', 'TOTAL', L.C.t1, 'SUM({F:A},{F:V},{F:LB})', true);
     lad('OH', 'Overhead charges @20%', L.C.oh, 'ROUND({F:T1}*20%,3)');
@@ -3227,7 +3240,7 @@ function tfOptions() { const o = [['', 'No old transformer taken out']]; ['3', '
 /* ---------- storage: Claude storage > IndexedDB > localStorage > memory ---------- */
 const Store = {
   mode: 'memory', mem: {}, db: null,
-  GLOBAL: ['offices', 'activeOffice', 'settings:shared', 'cloud', 'clMeta', 'clDirty', 'ratePack', 'setupDone'],
+  GLOBAL: ['offices', 'activeOffice', 'settings:shared', 'cloud', 'clMeta', 'clDirty', 'ratePack', 'setupDone', 'dataUid'],
   k(key) { return this.GLOBAL.includes(key) || PROFILE.key === 'paota' ? key : PROFILE.key + ':' + key; },
   async init() {
     if (window.storage && typeof window.storage.get === 'function') { this.mode = 'claude'; return; }
@@ -3238,8 +3251,8 @@ const Store = {
     try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); this.mode = 'browser'; } catch (e) { this.mode = 'memory'; }
   },
   tx(mode, fn) { return new Promise((res, rej) => { const t = this.db.transaction('kv', mode); const rq = fn(t.objectStore('kv')); t.oncomplete = () => res(rq ? rq.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); },
-  async get(k0) {
-    const k = this.k(k0);
+  async get(k0) { return this.getRaw(this.k(k0)); },
+  async getRaw(k) {
     try {
       let v = null;
       if (this.mode === 'claude') { try { const r = await window.storage.get(k, false); v = r ? r.value : null; } catch (e) { v = null; } }
@@ -3317,6 +3330,7 @@ async function officeReload() {
   if (typeof VR === 'object') { VR.list = null; VR.cur = null; VR.prop = null; VR.q = ''; VR.tfr = null; }
   if (typeof U === 'object') { U.tasks = []; U.pins = (await Store.get('pins')) || {}; }
   await loadAll(true);
+  if (typeof fiLoad === 'function') { try { await fiLoad(); } catch (e) { } }
   App.view = 'home'; render();
 }
 const saveSettings = debounce(() => Store.set('settings', App.settings), 500);
@@ -3533,7 +3547,7 @@ function viewHome() {
       ${tile('data-go="more"', I.gear, 'Settings', 'Signs, backup, users')}</div></section>
   </div>`;
 }
-function fiCount() { return FI.dir ? fiFeeders().length : 46; }
+function fiCount() { return FI.dir ? fiFeeders().length : 0; }
 function outBadge() { return FI.out ? FI.out.total : ''; }
 function outHint() {
   if (!FI.out) return 'Import the outstanding sheet';
@@ -3752,11 +3766,11 @@ function htBlock(e, sh) {
     <p class="hint">The sub-station stands right below the existing 11 KV line, so no line poles and no cut point are taken — only the jumper from the line down to the transformer.${ph3 ? ' A 3-Ph S/S always carries a V-cross with 3 pin insulators on each of its poles, so those are included.' : ''} Every figure above can be changed in the material list.</p>`;
   }
   if (ug) return `<div class="grid2">${mode}${seg('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']])}${phase}
-    ${fld('Cable length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Cable loop (metre)', 'opt.loop', e.opt && e.opt.loop != null && e.opt.loop !== '' ? e.opt.loop : 30, { n: 1 })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
+    ${fld('Cable length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
     ${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
     ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + ((e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
-    ${chk('Vermiculite @ Rs.335.39/Mtr on cable beyond the loop (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
-    <p class="hint">From your HT-connection cable sheet: labour 10% only on the loop length of cable (30 Mtr unless you change it) plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
+    ${chk('Vermiculite @ Rs.335.39/Mtr on cable beyond 30 Mtr (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
+    <p class="hint">From your HT-connection cable sheet: labour 10% only on 30 Mtr of cable plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
   return `<div class="grid2">${mode}
     ${fld('Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${phase}
     ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}
@@ -3807,7 +3821,7 @@ function cardHT(e) {
     ${lineBody}</div>
   <div class="card"><div class="h3">Service line (U/G cable to the meter room)</div><div class="grid2">
     ${fld('Service cable (metre) — usually 30', 'inp.cableLen', i.cableLen, { n: 1 })}${sel('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']])}
-    ${fld('Cable loop (metre)', 'opt.loop', e.opt && e.opt.loop != null && e.opt.loop !== '' ? e.opt.loop : 30, { n: 1 })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut, { n: 1 })}${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}</div>
+    ${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut, { n: 1 })}${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}</div>
     <p class="hint">Shown as its own row on the cable sheet. Change the length if the meter room is nearer or farther. Labour 10% goes on it and the joint kits; no vermiculite on it.</p></div>
   <div class="card"><div class="h3">S/S at the premises</div>
     ${chk('Transformer is provided by the Nigam (otherwise it is the consumer\'s own)', 'inp.withTF', i.withTF === true)}
@@ -4145,7 +4159,7 @@ function onBind(t) {
 }
 function autoGss(feeder) {
   const f = String(feeder || '').trim().toLowerCase(); if (!f) return;
-  FI_DATA.forEach(g => g.feeders.forEach(x => { if (x[0].toLowerCase() === f && !App.est.head.gss) { App.est.head.gss = g.gss; const gi = $('[data-bind="head.gss"]'); if (gi) gi.value = g.gss; } }));
+  ((typeof FI === 'object' && FI.dir) || []).forEach(g => (g.feeders || []).forEach(x => { if (String(x.name || '').toLowerCase() === f && !App.est.head.gss) { App.est.head.gss = g.gss; const gi = $('[data-bind="head.gss"]'); if (gi) gi.value = g.gss; } }));
 }
 function rerenderKeepScroll() { const y = window.scrollY; renderEditor(); window.scrollTo(0, y); }
 function onQty(t) {
@@ -4499,7 +4513,7 @@ async function restoreBackup(file) {
 
 /* ---------- FI DIRECTORY ---------- */
 function viewFI() {
-  return `<div class="edbar"><div class="edbar-in"><button class="back" data-act="back" aria-label="Back">${I.back}</button><div class="edtitle">Feeder in-charge list<small>JEn (O&amp;M) Paota</small></div></div></div>
+  return `<div class="edbar"><div class="edbar-in"><button class="back" data-act="back" aria-label="Back">${I.back}</button><div class="edtitle">Feeder in-charge list<small>${esc(PROFILE.bar || '')}</small></div></div></div>
   <div class="wrap"><input class="srch" id="fq" type="search" placeholder="Search feeder, FI name or GSS" value="${esc(App.f.fi)}" aria-label="Search feeders"><div id="flist"></div></div>`;
 }
 function renderFIList() {
@@ -4653,11 +4667,6 @@ async function boot() {
   await Store.init(); await loadAll();
   if (typeof clInit === 'function') await clInit();       // cloud settings first, so the entry screen knows about sign-in
   await userLoad(); await fiLoad();
-  const fdl = [], gdl = new Set(['Paota', 'Badnagar', 'Bhonawas', 'Khelna', 'Pragpura', 'Tulsipura', 'Mandha', 'Pathredi']);
-  FI_DATA.forEach(g => g.feeders.forEach(f => fdl.push(f[0])));
-  $('#dl-feeder').innerHTML = fdl.map(f => `<option value="${esc(f)}">`).join('');
-  $('#dl-gss').innerHTML = [...gdl].map(g => `<option value="${esc(g)}">`).join('');
-  $('#dl-loc').innerHTML = [...new Set(App.estimates.map(e => e.head.locality).filter(Boolean))].map(l => `<option value="${esc(l)}">`).join('');
   $('#sirTag').textContent = App.settings.sirLabel;
   appGate();
   document.addEventListener('click', onClick); document.addEventListener('input', onInput);
@@ -4687,10 +4696,20 @@ function fiSeed() {
 }
 function fiId() { return 'f' + Math.random().toString(36).slice(2, 9); }
 async function fiLoad() {
+  useOfficeData();
   FI.dir = await Store.get('fi'); FI.alias = (await Store.get('fiAlias')) || {};
-  if (!FI.dir || !FI.dir.length) { FI.dir = fiSeed(); await Store.set('fi', FI.dir); }
+  if (!FI.dir || !FI.dir.length) { FI.dir = fiSeed(); if (FI.dir.length) await storeQuiet('fi', FI.dir); }
   FI.dir.forEach(g => g.feeders.forEach(f => { if (!f.id) f.id = fiId(); }));
   FI.out = await Store.get('outstanding');
+  fillDatalists();
+}
+/* feeder / GSS / locality suggestions come only from this office's own feeder list and its own estimates */
+function fillDatalists() {
+  const fdl = new Set(), gdl = new Set(), ldl = new Set();
+  ((typeof FI === 'object' && FI.dir) || []).forEach(g => { if (g.gss) gdl.add(g.gss); (g.feeders || []).forEach(f => { if (f.name) fdl.add(f.name); }); });
+  (App.estimates || []).forEach(e => { const h = e.head || {}; if (h.gss) gdl.add(h.gss); if (h.feeder) fdl.add(h.feeder); if (h.locality) ldl.add(h.locality); });
+  const put = (id, s) => { const el = document.getElementById(id); if (el) el.innerHTML = [...s].sort((a, b) => String(a).localeCompare(String(b))).map(v => `<option value="${esc(v)}">`).join(''); };
+  put('dl-feeder', fdl); put('dl-gss', gdl); put('dl-loc', ldl);
 }
 const fiSave = debounce(() => Store.set('fi', FI.dir), 300);
 function fiFeeders() { const a = []; if (!FI.dir) return a; FI.dir.forEach(g => g.feeders.forEach(f => a.push(Object.assign({ gss: g.gss }, f)))); return a; }
@@ -4705,7 +4724,7 @@ function inRs(n) { return 'Rs. ' + groupIN(String(Math.round(num(n)))); }
 /* ---------------- screen ---------------- */
 function viewFI() {
   return `<div class="edbar"><div class="edbar-in"><button class="back" data-act="back" aria-label="Back">${I.back}</button>
-    <div class="edtitle">Feeder in-charge<small>JEn (O&amp;M) Paota</small></div></div></div>
+    <div class="edtitle">Feeder in-charge<small>${esc(PROFILE.bar || '')}</small></div></div></div>
   <div class="wrap"><div class="seg2">
     <button class="${FI.tab === 'dir' ? 'on' : ''}" data-act="fitab" data-t="dir">Directory</button>
     <button class="${FI.tab === 'out' ? 'on' : ''}" data-act="fitab" data-t="out">Outstanding</button></div>
@@ -4756,6 +4775,7 @@ function fiEditFeeder(id) {
     <button class="btn btn-danger" data-act="fidelf" data-id="${id}">Delete</button></div>`, 'Edit feeder');
 }
 function fiSaveFeeder(id) {
+  setTimeout(fillDatalists, 50);
   const f = fiById(id); if (!f) return;
   const gi = +$('#ef_gss').value, cur = FI.dir.findIndex(g => g.feeders.some(x => x.id === id));
   Object.assign(f, { name: $('#ef_name').value.trim() || f.name, code: $('#ef_code').value.trim(), fi: $('#ef_fi').value.trim(), mob: $('#ef_mob').value.replace(/\D/g, '').slice(-10) });
@@ -4774,6 +4794,7 @@ function fiEditGss(gi) {
     ${g.feeders.length ? '' : `<button class="btn btn-danger" data-act="fidelg" data-g="${gi}">Delete GSS</button>`}</div>`, 'Edit GSS');
 }
 function fiSaveGss(gi) {
+  setTimeout(fillDatalists, 50);
   const g = FI.dir[gi];
   g.gss = $('#eg_name').value.trim() || g.gss;
   g.incharge = $('#eg_inc').value.split(/[,\s]+/).map(x => x.replace(/\D/g, '')).filter(x => x.length >= 10).map(x => x.slice(-10));
@@ -5188,7 +5209,7 @@ function outTopMsg() {
   const o = FI.out, top = [];
   Object.values(o.groups).forEach(g => g.cases.forEach(c => top.push(Object.assign({ f: g.f }, c))));
   top.sort((a, b) => b.amt - a.amt);
-  return `JEn (O&M) Paota — highest 10 outstanding cases (${o.date})\n\n` +
+  return `${PROFILE.bar} — highest 10 outstanding cases (${o.date})\n\n` +
     top.slice(0, 10).map((c, i) => `${i + 1}. ${c.kno} ${c.name} — ${groupIN(String(c.amt))}\n   ${c.f.name} / ${c.f.fi || 'FI not set'}`).join('\n') +
     `\n\n${SIGN()}`;
 }
@@ -5562,8 +5583,9 @@ const officeTestMode = () => window.__APP_TEST__ === 1 && /nosetup/.test(locatio
 const officeVisible = o => !o.built || o.confirmed || o.owned || o.seen || o.key === OFF.active || officeTestMode();
 function officePick() {
   openSheet(`<p class="hint">Each sub-division keeps its own estimates, rates, signatures and feeder list. Nothing is shared between them.</p>
-    ${OFF.list.filter(officeVisible).map(o => `<button class="pick-row${o.key === OFF.active ? ' on' : ''}" data-act="offgo" data-k="${esc(o.key)}">
-      <b>${esc(o.bar)}</b><small>${esc(o.office)}</small>${o.key === OFF.active ? '<i>in use</i>' : ''}</button>`).join('')}
+    ${OFF.list.filter(officeVisible).map(o => `<div style="display:flex;gap:8px;align-items:stretch"><button class="pick-row${o.key === OFF.active ? ' on' : ''}" style="flex:1" data-act="offgo" data-k="${esc(o.key)}">
+      <b>${esc(o.bar)}</b><small>${esc(o.office)}</small>${o.key === OFF.active ? '<i>in use</i>' : ''}</button>
+      ${o.built ? '' : `<button class="btn btn-danger btn-sm" style="align-self:center" data-act="offdel" data-k="${esc(o.key)}" aria-label="Remove ${esc(o.bar)} from the list">Remove</button>`}</div>`).join('')}
     <div class="btnrow"><button class="btn btn-ink" data-act="offadd">Add another J.En. office (${officesInUse().length}/${OFFICE_MAX})</button>
       <button class="btn btn-quiet" data-act="offedit">My office details</button>
       <button class="btn btn-quiet" data-act="closesheet">Close</button></div>`, 'Choose the office', 'wide');
@@ -5909,7 +5931,7 @@ async function sendForApproval(e) {
 }
 function apprWa(id) {
   const e = (App.est && App.est.id === id) ? App.est : App.estimates.find(x => x.id === id) || App.est;
-  fiPreviewSend(`JEn (O&M) Paota\nEstimate approval ke liye bheja hai.\n${e.head.title || ''}\n${e.head.applicant || ''}${e.head.locality ? '\nLocality: ' + e.head.locality : ''}\nAmount: ${fmtRs(estTotal(e))}\n\nFile saath bheji hai — app me More > Open estimate for approval se kholein.`, 'A.En.', App.settings.aenMob);
+  fiPreviewSend(`${PROFILE.bar}\nEstimate approval ke liye bheja hai.\n${e.head.title || ''}\n${e.head.applicant || ''}${e.head.locality ? '\nLocality: ' + e.head.locality : ''}\nAmount: ${fmtRs(estTotal(e))}\n\nFile saath bheji hai — app me More > Open estimate for approval se kholein.`, 'A.En.', App.settings.aenMob);
 }
 async function openApproval(file) {
   try {
@@ -5937,7 +5959,7 @@ async function approveDo(id, ok) {
   e.approvedAt = Date.now(); if (ok) { e.signOn = Object.assign({}, e.signOn, { aen: true }); }
   touch(); closeSheet();
   deliver(new TextEncoder().encode(estPack(e)), `${ok ? 'Approved' : 'Returned'}_${(e.head.applicant || e.type).replace(/\W+/g, '_').slice(0, 24)}.jenest`, 'application/json', 'File');
-  fiPreviewSend(`A.En. (O&M) Paota\nEstimate ${ok ? 'APPROVED' : 'RETURNED'}\n${e.head.title || ''}\n${e.head.applicant || ''}\nAmount: ${fmtRs(estTotal(e))}${e.aenNote ? '\nNote: ' + e.aenNote : ''}\n\nFile saath bheji hai.`, 'J.En.', App.settings.jenMob);
+  fiPreviewSend(`${PROFILE.aen || 'A.En. (O&M)'}\nEstimate ${ok ? 'APPROVED' : 'RETURNED'}\n${e.head.title || ''}\n${e.head.applicant || ''}\nAmount: ${fmtRs(estTotal(e))}${e.aenNote ? '\nNote: ' + e.aenNote : ''}\n\nFile saath bheji hai.`, 'J.En.', App.settings.jenMob);
   renderEditor();
 }
 
@@ -5984,7 +6006,7 @@ const U_ACTS = {
     const em = ($('#ofEm').value || '').trim(), pw = $('#ofPw').value || '';
     if (!em || pw.length < 6) { toast('Type your email and password'); return; }
     try {
-      await clPassword(em, pw, false); await clSync(true); await officeLoad();
+      await clPassword(em, pw, false); await clAfterSignIn(); await officeLoad();
       const mine = officesInUse().filter(o => o.confirmed || !o.built);
       if (!mine.length) { toast('Signed in — now fill your office details'); App.sheetLock = 0; closeSheet(true); officeForm(false, true); return; }
       App.sheetLock = 0; closeSheet(true);
@@ -5996,10 +6018,12 @@ const U_ACTS = {
 
   offsave: async (t, d) => { const r = await (async () => officeSave(!!d.edit))(); await applyDiscomRates(); if (App.view) render(); return r; },
   offdel: async (t, d) => {
-    if (!(await ask('Remove this sub-division from the list? Its estimates stay on the phone but will not be reachable.', 'Remove', true))) return;
-    closeSheet(true); OFF.list = OFF.list.filter(x => x.key !== d.k);
+    const ob = (OFF.list.find(x => x.key === d.k) || {}).bar || 'this sub-division';
+    if (!(await ask(`Remove ${ob} from your office list? Use this for an office that is not yours. Its estimates are not shown any more.`, 'Remove', true))) return;
+    closeSheet(true); const wasActive = d.k === OFF.active; OFF.list = OFF.list.filter(x => x.key !== d.k);
     await Store.set('offices', OFF.list.filter(officeKeep));
-    await Store.set('activeOffice', 'paota'); officeApply('paota'); await officeReload(); toast('Removed');
+    if (wasActive) { await Store.set('activeOffice', 'paota'); officeApply('paota'); if (typeof stripReady === 'function') await stripReady(); }
+    await officeReload(); toast('Removed');
   },
   pinok: (t, d) => { const v = ($('#pinIn') || {}).value || ''; if (v === U.pins[d.r]) setUser(d.r); else { const l = $('#lock'); l.remove(); document.body.classList.remove('locked'); lockScreen('Galat PIN'); } },
   pinback: () => { const l = $('#lock'); if (l) l.remove(); document.body.classList.remove('locked'); lockScreen(); },
@@ -6084,7 +6108,7 @@ function sldInfo(e) {
   }
   return { ug, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
     cable: i.ugSize === '120' ? '3C x 120 sqmm' : '3C x 185 sqmm', out: i.ugOut == null ? 2 : num(i.ugOut), stj: num(i.ugStj), inn: num(i.ugIn),
-    ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen), loop: e.opt && e.opt.loop != null && e.opt.loop !== '' ? num(e.opt.loop) : 30,
+    ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen),
     poles: ht ? rowQty(e, 'pole9_200', 'ht', 2) : ug ? 0 : rowQty(e, 'pole9_200', 'ht', num(info.linePoles) + num(info.dp)), dp: num(info.dp),
     ssPoles: rowQty(e, 'pole9_200', 'ss', num(info.ssPoles)), ltPoles: rowQty(e, 'pole9_200', 'lt', num(info.ltPoles)), type: e.type, dis: e.type === 'sh' ? num(i.dDist) : 0,
     preset: (e.opt && e.opt.preset) || '',
@@ -6377,7 +6401,7 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
       line(cx, yy, cx + (q % 2 ? -7 : 7), yy - seg, 1.1); line(cx + (q % 2 ? -7 : 7), yy - seg, cx, yy - 2 * seg, 1.1); yy -= 2 * seg; }
     y = yy;
     const cl = s.ht ? s.ugLen : s.htLen;
-    const lab = [`11 KV ${s.cable} XLPE U/G CABLE`, s.ht ? `${cl} MTR SERVICE LINE` : `${cl} MTR + ${s.loop == null ? 30 : s.loop} MTR LOOP`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`];
+    const lab = [`11 KV ${s.cable} XLPE U/G CABLE`, s.ht ? `${cl} MTR SERVICE LINE` : `${cl} MTR + 30 MTR LOOP`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`];
     lab.forEach((t, i) => txt(t, cx + 22, y + (fy - 10 - y) * 0.62 - i * 11, 8));
   } else if (!s.htLen && s.kva) {
     line(cx, y, cx, y - 34 * k, 1.2, true);
@@ -6533,20 +6557,12 @@ const VR = { list: null, cur: null, q: '', prop: null };
 async function vrLoad() {
   VR.list = await Store.get('vr');
   if (!PROFILE.vr) { VR.list = VR.list || []; return; }
-  const seed = vrSeedFor(PROFILE.seed);
+  const seed = vrSeedMine();
   const copy = f => ({ name: f.name, kset: f.kset || '', rows: f.rows.map(r => Object.assign({ d: r.d, k: r.k, n: r.n }, r.b ? { b: 1 } : {})) });
-  if (!VR.list || !VR.list.length) { VR.list = seed.map(copy); await Store.set('vr', VR.list); }
-  else if (PROFILE.key !== 'paota' && !(await Store.get('vrSeed2'))) {    // one-time: bring in the checked feeder schedules
-    seed.forEach(f => { const i = VR.list.findIndex(x => x.name === f.name); if (i >= 0 && !VR.list[i].upd) VR.list[i] = copy(f); else if (i < 0) VR.list.push(copy(f)); });
-    await Store.set('vr', VR.list); await Store.set('vrSeed2', 1);
-  }
-  else if (PROFILE.key === 'paota' && !(await Store.get('vrPaotaOnly'))) {   // one-time: keep the Paota feeders only
-    const keep = seed.map(f => f.name);
-    VR.list = VR.list.filter(f => keep.includes(f.name));
-    keep.forEach(n => { if (!VR.list.some(f => f.name === n)) VR.list.push({ name: n, rows: seed.find(f => f.name === n).rows.map(r => ({ d: r.d, k: r.k, n: r.n })) }); });
-    VR.list.sort((a, b) => a.name.localeCompare(b.name));
-    await Store.set('vr', VR.list); await Store.set('vrPaotaOnly', 1);
-  }
+  if (!VR.list || !VR.list.length) { VR.list = seed.map(copy); if (VR.list.length) await storeQuiet('vr', VR.list); }
+  // the old one-time clean-ups (Sept 2026) already ran on the owner's phones; on any other phone they would
+  // overwrite a list that came from the cloud, so they now only set their flags and never change a list
+  else if (!(await Store.get('vrSeed2')) || !(await Store.get('vrPaotaOnly'))) { await Store.set('vrSeed2', 1); await Store.set('vrPaotaOnly', 1); }
 }
 const vrSave = debounce(() => Store.set('vr', VR.list), 300);
 function vrTouch(f) {                                   // first edit keeps a copy to fall back to
@@ -6762,7 +6778,7 @@ function vrOne() {
       ${a ? '<button class="btn btn-quiet btn-sm" data-act="vrpropoff">Remove it</button>' : ''}
       <button class="btn btn-quiet btn-sm" data-act="vrpdf">PDF</button><button class="btn btn-quiet btn-sm" data-act="vrxls">Excel</button>
       <button class="btn btn-ink btn-sm" data-act="tfr">Make TFR</button>
-      ${vrSeedFor(PROFILE.seed).some(x => x.name === f.name) ? '<button class="btn btn-quiet btn-sm" data-act="vrreset">Reset feeder</button>' : ''}</div>
+      ${vrSeedMine().some(x => x.name === f.name) ? '<button class="btn btn-quiet btn-sm" data-act="vrreset">Reset feeder</button>' : ''}</div>
     ${a ? `<p class="hint">${num(p.kva)} KVA ${p.mode === 'new' ? `taken as a new point after row ${num(p.at)} at ${num(p.d)} KM` : `added into row ${num(p.at)}, which becomes ${a.rows[a.at].k} KVA`}. Existing ${pct(c.vr)} → after ${pct(a.calc.vr)}; energy loss ${pct(c.loss)} → ${pct(a.calc.loss)}.</p>
       <div class="btnrow"><button class="btn btn-ink btn-sm" data-act="vradopt">Load released — add it to the feeder</button></div>` : ''}</div>
     <div class="card"><div class="ph"><h3 class="h3">DTC schedule</h3><button class="btn btn-quiet btn-sm" data-act="vrrow">Add row</button></div>
@@ -7042,7 +7058,7 @@ const VR_ACTS = {
     VR.prop = null; vrOne(); toast('Load added to the feeder — confirm the update');
   },
   vrreset: async (t, d) => {
-    const f = VR.cur, o = vrSeedFor(PROFILE.seed).find(x => x.name === f.name); if (!o) return;
+    const f = VR.cur, o = vrSeedMine().find(x => x.name === f.name); if (!o) return;
     if (!(await ask('Put this feeder back to the schedule that came with the app? Any change you made here is lost.', 'Reset', true))) return;
     closeSheet();
     f.rows = o.rows.map(r => Object.assign({ d: r.d, k: r.k, n: r.n }, r.b ? { b: 1 } : {})); f.kset = o.kset || f.kset; f.pend = false; delete f.base; f.upd = fiToday(); vrSave(); vrOne(); toast('Feeder reset');
@@ -7608,7 +7624,7 @@ const LT_ACTS = {
    the queue goes up to the J.En.'s own rows in the cloud, and changes made on his other devices come down.
    Consumer outstanding lists stay on the phone unless he chooses otherwise. */
 const CL = { cfg: null, meta: {}, dirty: {}, busy: false, timer: null, last: 0, err: '' };
-const CL_LOCAL_ONLY = ['user', 'pins', 'activeOffice', 'setupDone', 'cloud', 'clMeta', 'clDirty', 'vrPaotaOnly', 'vrSeed2', 'settings:shared'];
+const CL_LOCAL_ONLY = ['user', 'pins', 'activeOffice', 'setupDone', 'cloud', 'clMeta', 'clDirty', 'vrPaotaOnly', 'vrSeed2', 'settings:shared', 'dataUid'];
 const CL_PRIVATE = ['outstanding', 'outPrev'];
 const CL_BUILT_IN = typeof APP_CLOUD === 'object' ? APP_CLOUD : null;   // filled in at build time when the project is fixed
 
@@ -7624,6 +7640,8 @@ async function clSave() { await Store.set('cloud', CL.cfg); await Store.set('clM
 /* reading and writing the store of any office, not only the one on screen */
 async function clRaw(office, fn) { const keep = PROFILE.key; PROFILE.key = office; try { return await fn(); } finally { PROFILE.key = keep; } }
 let clOrigSet = null;
+/* a write that stays on this phone and is not sent to the cloud (built-in seed lists) */
+async function storeQuiet(k, v) { return clOrigSet ? clOrigSet(k, v) : Store.set(k, v); }
 function clHookStore() {
   if (clOrigSet) return;
   clOrigSet = Store.set.bind(Store);
@@ -7705,20 +7723,24 @@ async function clPush() {
 async function clPull() {
   const since = num(CL.cfg.since);
   const rows = await clFetch(`/rest/v1/docs?select=office,key,value,updated_at,deleted,device&updated_at=gt.${since}&order=updated_at.asc&limit=1000`) || [];
+  CL._lastN = rows.length;
   let changed = 0, top = since;
   for (const r of rows) {
     top = Math.max(top, num(r.updated_at));
+    if (r.key === 'dataUid' || CL_LOCAL_ONLY.includes(r.key)) continue;           // belongs to the phone, not to the account
     const id = clId(r.office, r.key), mine = Math.abs(CL.meta[id] || 0);
     if (r.device === CL.cfg.device && mine >= num(r.updated_at)) continue;      // my own write coming back
     if (mine > num(r.updated_at) && CL.dirty[id]) continue;                      // I changed it later here
     CL.meta[id] = r.deleted ? -num(r.updated_at) : num(r.updated_at);
     if (r.key.startsWith('est:')) {
-      await clRaw(r.office, async () => {
+      const kept = await clRaw(r.office, async () => {
         const list = (await Store.get('estimates')) || [], i = list.findIndex(e => 'est:' + e.id === r.key);
+        if (!r.deleted && i >= 0 && num(list[i].updated) > num(r.updated_at)) return num(list[i].updated);   // this phone has a newer copy — it goes up instead
         if (r.deleted) { if (i >= 0) list.splice(i, 1); }
         else if (r.value) { if (i >= 0) list[i] = r.value; else list.unshift(r.value); }
         await clOrigSet('estimates', list);
       });
+      if (kept) { CL.meta[id] = kept; CL.dirty[id] = 1; continue; }
     } else if (r.office === '_global') await clOrigSet(r.key, r.value);
     else await clRaw(r.office, () => clOrigSet(r.key, r.deleted ? null : r.value));
     changed++;
@@ -7732,8 +7754,16 @@ async function clPull() {
   }
   return changed;
 }
+async function clPullAll() {
+  for (let i = 0; i < 40 && CL.busy; i++) await new Promise(r => setTimeout(r, 500));
+  CL.busy = true; let got = 0;
+  try { await clRefresh(); for (let i = 0; i < 50; i++) { got += await clPull(); if ((CL._lastN || 0) < 1000) break; } }
+  finally { CL.busy = false; }
+  return got;
+}
 async function clSync(quiet) {
-  if (!clOn() || CL.busy) return;
+  if (!clOn()) return;
+  if (CL.busy) { clSoon(); return; }
   if (!navigator.onLine) { clBadge('offline'); return; }
   CL.busy = true; clBadge('busy');
   try {
@@ -7753,15 +7783,19 @@ async function clUploadAll() {
   const all = typeof OFF === 'object' ? OFF.list.map(o => o.key) : [PROFILE.key], offs = [];
   for (const k of all) {                               // an office goes up if it holds anything at all
     if (!isReadyOwner() && isReadyKey(k)) continue;
-    const has = await clRaw(k, async () => ((await Store.get('estimates')) || []).length || (await Store.get('settings')) || (await Store.get('fi')) || (await Store.get('vr')));
+    const has = await clRaw(k, async () => ((await Store.get('estimates')) || []).length || (await Store.get('settings')) || ((await Store.get('fi')) || []).length || ((await Store.get('vr')) || []).length);
     if (has) offs.push(k);
   }
-  CL.meta[clId('_global', 'offices')] = Date.now(); CL.dirty[clId('_global', 'offices')] = 1;
+  if (!CL.meta[clId('_global', 'offices')] && (await Store.get('offices'))) { CL.meta[clId('_global', 'offices')] = Date.now(); CL.dirty[clId('_global', 'offices')] = 1; }
   for (const o of offs) {
     await clRaw(o, async () => {
       const keys = ['settings', 'rates', 'custom', 'fi', 'fiAlias', 'vr', 'tasks', 'sign:jen', 'sign:aen', 'sign:xen'].concat(CL.cfg.withConsumers ? CL_PRIVATE : []);
-      for (const k of keys) if ((await Store.get(k)) != null) { CL.meta[clId(o, k)] = Date.now(); CL.dirty[clId(o, k)] = 1; }
-      ((await Store.get('estimates')) || []).forEach(e => { const id = clId(o, 'est:' + e.id); CL.meta[id] = num(e.updated) || Date.now(); CL.dirty[id] = 1; });
+      for (const k of keys) {
+        if (CL.meta[clId(o, k)]) continue;                                   // the cloud already has it — never push an old phone copy over it
+        const v = await Store.get(k); if (v == null || (Array.isArray(v) && !v.length)) continue;
+        CL.meta[clId(o, k)] = Date.now(); CL.dirty[clId(o, k)] = 1;
+      }
+      ((await Store.get('estimates')) || []).forEach(e => { const id = clId(o, 'est:' + e.id); if (CL.meta[id]) return; CL.meta[id] = num(e.updated) || Date.now(); CL.dirty[id] = 1; });
     });
   }
   await clSave();
@@ -7769,7 +7803,7 @@ async function clUploadAll() {
 
 /* ---------------- central rate lists ---------------- */
 async function clCheckPack() {
-  const rows = await clFetch(`/rest/v1/packs?select=id,label,body,published&discom=eq.${encodeURIComponent(CL.cfg.discom || 'JVVNL')}&kind=eq.sir&order=published.desc&limit=1`);
+  const rows = await clFetch(`/rest/v1/packs?select=id,label,body,published&discom=eq.${encodeURIComponent(discomOf())}&kind=eq.sir&order=published.desc&limit=1`);
   return rows && rows[0];
 }
 async function clApplyPack(p) {
@@ -7792,15 +7826,22 @@ async function clInit() {
   if (CL_BUILT_IN) Object.assign(CL.cfg, { url: CL_BUILT_IN.url, key: CL_BUILT_IN.key, discom: CL_BUILT_IN.discom || CL.cfg.discom });   // every J.En. uses the one project
   if (!CL.cfg.device) CL.cfg.device = 'd' + Math.random().toString(36).slice(2, 10);
   CL.meta = (await Store.get('clMeta')) || {}; CL.dirty = (await Store.get('clDirty')) || {};
-  if (CL.cfg.session && CL.cfg.session.user_id && !(await Store.get('dataUid'))) await Store.set('dataUid', CL.cfg.session.user_id);
+  if (clOn()) { try { CL._recover = await clGuardUser(); } catch (e) { } }
   const pk = await Store.get('ratePack'); if (pk && discomOf() === 'JVVNL' && !(App.pack && App.pack.src === 'import')) { App.pack = pk; rebuildCat(); }
   clHookStore();
   if (clOn()) {
     clBadge(Object.keys(CL.dirty).length ? 'busy' : 'ok');
     setTimeout(async () => {
-      if (clMarkOwned()) await Store.set('offices', OFF.list.filter(officeKeep));
-      if (!CL.cfg.up2) { await clUploadAll(); CL.cfg.up2 = 1; await clSave(); }
-      clSync(true);
+      try {
+        if (CL._recover || !CL.cfg.up2) {
+          if (CL._recover) toast('Bringing your work back from the cloud…');
+          await clPullAll(); if (typeof officeLoad === 'function') await officeLoad();
+        }
+        if (clMarkOwned()) await Store.set('offices', OFF.list.filter(officeKeep));
+        if (!CL.cfg.up2) { await clUploadAll(); CL.cfg.up2 = 1; await clSave(); }
+        await clSync(true);
+        if (CL._recover) { CL._recover = 0; await clSettleOffice(); toast('Your work is back from the cloud'); }
+      } catch (e) { CL.err = e.message || String(e); clBadge('err'); }
     }, 1500);
   }
   window.addEventListener('online', () => clSync(true));
@@ -7818,7 +7859,12 @@ function cloudCard() {
       <div class="btnrow"><button class="btn btn-volt btn-sm" data-act="clsync">Sync now</button>
         <button class="btn btn-quiet btn-sm" data-act="clpack">Check for a new rate list</button>
         <button class="btn btn-quiet btn-sm" data-act="clpw">Change my password</button>
-        <button class="btn btn-quiet btn-sm" data-act="clout">Sign out</button></div>`
+        <button class="btn btn-quiet btn-sm" data-act="clout">Sign out</button></div>
+      <div class="h4" style="margin-top:14px">If something looks missing</div>
+      <p class="hint">Your estimates are kept in the cloud. Check what the cloud holds, then take everything again onto this phone.</p>
+      <div class="btnrow"><button class="btn btn-ink btn-sm" data-act="clcensus">Check what is in my cloud</button>
+        <button class="btn btn-quiet btn-sm" data-act="clreload">Take everything again from the cloud</button></div>
+      <div id="clCensus"></div>`
     : `<p class="hint">Keep every estimate safe even if the phone is lost, and have the same data on the office PC.</p>
       ${c.url && c.key ? '' : `<div class="grid2">${fldv('Cloud project address', 'clUrl', c.url || '', 'span2')}${fldv('Project key (anon)', 'clKey', c.key || '', 'span2')}</div>`}
       <div class="grid2">${fldv('Your email', 'clEmail', c.email || '', 'span2', 'email')}${fldv('Password (at least 6 letters)', 'clPass', '', 'span2', 'password')}</div>
@@ -7858,28 +7904,75 @@ async function storeWipe(keep) {
     await new Promise((res, rej) => { const tx = Store.db.transaction('kv', 'readwrite'), os = tx.objectStore('kv'), rq = os.getAllKeys();
       rq.onsuccess = () => { (rq.result || []).forEach(k => { if (!keep.includes(k)) os.delete(k); }); }; tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
   } else if (Store.mode === 'memory') { Object.keys(Store.mem).forEach(k => { if (!keep.includes(k)) delete Store.mem[k]; }); }
+  else if (Store.mode === 'browser') { try { Object.keys(localStorage).forEach(k => { if (!keep.includes(k) && !/^(lg|__)/.test(k)) localStorage.removeItem(k); }); } catch (e) { } }
+  else if (Store.mode === 'claude' && window.storage && window.storage.list) { try { const r = await window.storage.list('', false); for (const k of ((r && r.keys) || [])) if (!keep.includes(k)) await window.storage.delete(k, false); } catch (e) { } }
 }
+/* whose work is on this phone right now: one value for the whole phone (older versions kept it per office) */
+async function clLocalUid() {
+  const g = await Store.get('dataUid'); if (g) return g;
+  for (const o of (OFF.list || [])) { const v = await Store.getRaw((o.key === 'paota' ? '' : o.key + ':') + 'dataUid'); if (v) return v; }
+  return null;
+}
+/* returns true when another account's work was on this phone and has been cleared */
 async function clGuardUser() {
-  const uid = CL.cfg.session && CL.cfg.session.user_id; if (!uid) return;
-  const was = await Store.get('dataUid');
+  const uid = CL.cfg.session && CL.cfg.session.user_id; if (!uid) return false;
+  const was = await clLocalUid();
   let foreign = !!was && was !== uid;
-  if (!was) {                                   // data from before this check: only the owner's phone holds the ready offices
+  if (CL.cfg.uid && CL.cfg.uid !== uid) foreign = true;                  // the last account that synced here was someone else
+  if (!was && !CL.cfg.uid) {                    // data from before this check: only the owner's phone holds the ready offices
     const ownsReady = (OFF.list || []).some(o => o.built && (o.owned || o.confirmed || o.seen));
     const own = (typeof CL_BUILT_IN === 'object' && CL_BUILT_IN && CL_BUILT_IN.readyOwners) || {}, isOwner = Object.values(own).some(a => (a || []).includes(uid));
     foreign = ownsReady && !isOwner;
   }
   if (foreign) {
     await storeWipe(['cloud', 'user']);
-    CL.meta = {}; CL.dirty = {}; CL.cfg.since = 0; CL.cfg.lastSync = 0; await Store.set('cloud', CL.cfg);
+    CL.meta = {}; CL.dirty = {}; CL.cfg.since = 0; CL.cfg.lastSync = 0;
+    if (typeof OFF === 'object') { OFF.list = []; OFF._pulled = 0; }
     if (typeof officeLoad === 'function') await officeLoad();
     if (typeof officeReload === 'function') await officeReload();
   }
+  CL.cfg.uid = uid; await clSave();
   await Store.set('dataUid', uid);
+  return foreign;
+}
+/* after a full download: land on an office this account really uses */
+async function clSettleOffice() {
+  if (typeof officeLoad === 'function') await officeLoad();
+  if (clMarkOwned()) await Store.set('offices', OFF.list.filter(officeKeep));
+  const mine = OFF.list.filter(o => officeVisible(o) && (!o.built || o.confirmed || o.owned || o.seen));
+  if (mine.length && !mine.some(o => o.key === OFF.active)) { await Store.set('activeOffice', mine[0].key); officeApply(mine[0].key); }
+  if (typeof officeReload === 'function') await officeReload();
+}
+/* how much of this account is in the cloud — to check before trusting any phone */
+async function clCensus() {
+  await clRefresh();
+  const all = [];
+  for (let off = 0; off < 50000; off += 1000) {
+    const rows = await clFetch(`/rest/v1/docs?select=office,key,deleted&order=office.asc,key.asc&limit=1000&offset=${off}`) || [];
+    all.push(...rows); if (rows.length < 1000) break;
+  }
+  const by = {};
+  all.forEach(r => { if (r.office === '_global') return; const o = by[r.office] || (by[r.office] = { est: 0, fi: false, vr: false, settings: false });
+    if (r.deleted) return; if (r.key.startsWith('est:')) o.est++; else if (r.key === 'fi') o.fi = true; else if (r.key === 'vr') o.vr = true; else if (r.key === 'settings') o.settings = true; });
+  return by;
+}
+/* the same account on this phone: drop the phone copy and take everything again from the cloud */
+async function clReloadAll() {
+  await clSync(true);
+  if (Object.keys(CL.dirty || {}).length) throw new Error('Some changes on this phone have not reached the cloud yet. Connect to the internet and try again.');
+  await storeWipe(['cloud', 'user', 'pins', 'activeOffice', 'dataUid', 'setupDone']);
+  CL.meta = {}; CL.dirty = {}; CL.cfg.since = 0; await clSave();
+  if (typeof OFF === 'object') OFF.list = [];
+  await officeLoad(); await officeReload();
+  await clPullAll();
+  await clSettleOffice();
 }
 async function clAfterSignIn() {
   await clGuardUser();
   for (let i = 0; i < 40 && CL.busy; i++) await new Promise(r => setTimeout(r, 500));
   if (!(App.estimates || []).length && !(await Store.get('activeOffice'))) { CL.cfg.since = 0; await Store.set('cloud', CL.cfg); }
+  await clPullAll();                                    // the cloud copy comes down before anything on this phone goes up
+  if (typeof officeLoad === 'function') await officeLoad();
   if (clMarkOwned()) await Store.set('offices', OFF.list.filter(officeKeep));
   await clUploadAll(); await clSync(true);
   if (typeof officeLoad === 'function') await officeLoad();
@@ -7913,11 +8006,28 @@ const CL_ACTS = {
   clverify: async () => {
     try {
       await clVerify(CL.cfg.email, ($('#clCode') || {}).value);
-      CL.err = ''; await clUploadAll(); clRedraw(); toast('Signed in — sending your data to the cloud');
-      await clSync(); clRedraw();
+      CL.err = ''; await clAfterSignIn(); clRedraw(); toast('Signed in — your offices are here');
     } catch (e) { CL.err = e.message; clRedraw(); }
   },
   clsync: async () => { const r = await clSync(); clRedraw(); if (r) toast(`Sent ${r.up}, received ${r.down}`); },
+  clcensus: async () => {
+    const box = $('#clCensus'); if (box) box.innerHTML = '<p class="hint">Checking the cloud…</p>';
+    try {
+      const by = await clCensus(), keys = Object.keys(by);
+      const name = k => { const o = OFF.list.find(x => x.key === k); return o ? o.bar : 'Office ' + k; };
+      const html = keys.length ? `<div class="chk-list">${keys.map(k => `<div class="chk-row"><b class="ok">${by[k].est}</b><span><b>${esc(name(k))}</b> — ${by[k].est} estimate${by[k].est === 1 ? '' : 's'}${by[k].fi ? ', feeder list' : ''}${by[k].vr ? ', VR feeders' : ''}${OFF.list.some(x => x.key === k) ? '' : ' <i>(not in your office list)</i>'}</span></div>`).join('')}</div>`
+        : '<p class="warnline">The cloud has nothing for this account yet.</p>';
+      if (box) box.innerHTML = `<p class="hint" style="margin-top:8px">Signed in as <b>${esc(CL.cfg.email || '')}</b>. In the cloud now:</p>` + html;
+    } catch (e) { if (box) box.innerHTML = `<p class="warnline">Could not check: ${esc(e.message)}</p>`; }
+  },
+  clreload: async () => {
+    if (!navigator.onLine) { toast('Connect to the internet first'); return; }
+    if (!(await ask('Clear this phone\'s copy and take all your offices, estimates, feeder lists and signatures again from the cloud? Anything not yet in the cloud is sent first.', 'Take it again'))) return;
+    closeSheet(true); toast('Taking your work again from the cloud…');
+    try { await clReloadAll(); toast('Done — this phone now has what your cloud has'); }
+    catch (e) { toast(e.message || 'Could not finish — try again'); }
+    if (App.view === 'more') render();
+  },
   clout: async () => {
     if (!(await ask('Sign out of JenBuddy on this device? Your work is kept safe in the cloud.', 'Sign out'))) return;
     try { if (navigator.onLine && Object.keys(CL.dirty || {}).length) { toast('Saving your work to the cloud…'); await Promise.race([clSync(true), new Promise(r => setTimeout(r, 12000))]); } } catch (e) {}
