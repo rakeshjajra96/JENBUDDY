@@ -890,7 +890,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '29.09.2026 11:00';
+const APP_VERSION = '29.09.2026 13:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -1292,7 +1292,7 @@ pgrabbit|PG Clamp for Rabbit|5015|NOS|64.40|
 |Poly Propylene Rope 12/18/28 mm|1848|KG|85.10|
 |Poly Propylene Rope 20 mm|1925|KG|111.04|
 # Other charges
-vermic|Vermiculite Charge (as per ACR)|ACR|MTR|335.39|
+vermic|Vermiculite Charge (as per ACR)|ACR|MTR|356.69|
 `;
 
 const UNIT_MAP = { KM: 'Mtr', MT: 'Kg', MTR: 'Mtr', NOS: 'Nos', SET: 'Set', KG: 'Kg', KL: 'KL', PAIRS: 'Pair', SQMTR: 'Sq.Mtr' };
@@ -2110,7 +2110,8 @@ function rowFromCat(cat, key) {
 }
 
 /* ---------- U/G CABLE on the HT side — his HT-connection cable sheet rules ----------
-   Vermiculite Rs.335.39/Mtr on cable beyond 30 Mtr (loop + service); labour 10% only on 30 Mtr of cable + joints.
+   Cable taken = route + loop (30 Mtr unless changed). Vermiculite only on the route; labour 10% only on the loop cable + joints.
+   Estimates made before the loop box keep their old working: the length they hold already includes a 30 Mtr loop.
    Vermiculite and civil are mutually exclusive on the cable: if vermiculite is off, civil 10% is taken on the cable instead. */
 const UG_CABLE = /^c11_(185|120|300|70)$/;
 function addUG(o, inp, ph) {
@@ -2120,7 +2121,7 @@ function addUG(o, inp, ph) {
     add('pole9_200', 1); add('ch14', 1); add('disc11', d); add('hw45tc', d);
   }
   const z = inp.ugSize === '120' ? '120' : '185';
-  o['c11_' + z] = L;
+  o['c11_' + z] = r3(L + num(inp.ugLoop));             // the loop goes over the route length
   const out = inp.ugOut === '' || inp.ugOut == null ? 2 : num(inp.ugOut);
   if (out > 0) o['cjk' + z + 'out'] = out;
   if (num(inp.ugIn) > 0) o['cjk' + z + 'in'] = num(inp.ugIn);
@@ -2128,10 +2129,11 @@ function addUG(o, inp, ph) {
 }
 function ugInfo(rows, c, opt) {
   opt = opt || {}; let L = 0, cab = 0, cab30 = 0;
-  rows.forEach(r => { if (UG_CABLE.test(r.key) && r.q && typeof r.q === 'object') { const q = num(r.q[c]); if (q > 0) { L += q; cab += r3(q * num(r.rate)); cab30 += r3(Math.min(30, q) * num(r.rate)); } } });
+  const lp = opt.ugLoop == null || opt.ugLoop === '' ? 30 : Math.max(0, num(opt.ugLoop)); let left = lp;
+  rows.forEach(r => { if (UG_CABLE.test(r.key) && r.q && typeof r.q === 'object') { const q = num(r.q[c]); if (q > 0) { L += q; cab += r3(q * num(r.rate)); const t = Math.min(left, q); left -= t; cab30 += r3(t * num(r.rate)); } } });
   if (!L) return null;
-  const verm = opt.verm !== false, rate = num(opt.vermRate) || 335.39, vLen = Math.max(0, r3(L - 30));
-  return { L, cab: r3(cab), cab30: r3(cab30), verm, rate, vLen, V: verm ? r3(vLen * rate) : r3(cab * 0.10),
+  const verm = opt.verm !== false, rate = num(opt.vermRate) || 335.39, vLen = Math.max(0, r3(L - lp));
+  return { L, lp: r3(Math.min(lp, L)), cab: r3(cab), cab30: r3(cab30), verm, rate, vLen, V: verm ? r3(vLen * rate) : r3(cab * 0.10),
     label: verm ? `Vermiculite Ch @ Rs.${rate}/Mtr on ${vLen} Mtr U/G cable (V)` : 'Civil Ch @10% on U/G cable (V)' };
 }
 
@@ -2459,7 +2461,7 @@ function specConn(est, cfg, kind) {
   const n = rows.length, ugH = L.ht.ug, old = opt.oldTF && num(opt.oldTF.rate) > 0 ? opt.oldTF : null;
   const lad = (id, label, fn, b) => { const cells = [S(label, { cs: 5, al: 'l', b: !!b })]; cols.forEach((c, j) => { cells.push(S('')); cells.push(fn(AC[j], c)); }); R.push({ kind: 'lad', id, cells }); };
   lad('A', 'Total (A)', (ac, c) => Nn(L[c].A, 'amt', n ? `SUM({${ac}:i0}:{${ac}:i${n - 1}})` : '0', { b: true }), true);
-  lad('B', 'Labour Ch @10% (B)' + (ugH ? ' (U/G: only 30 Mtr cable + joints)' : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
+  lad('B', 'Labour Ch @10% (B)' + (ugH ? ` (U/G: only ${ugH.lp} Mtr loop cable + joints)` : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
   lad('C', 'Dismantle Ch (C)', () => NIL());
   if (ugH) lad('V', ugH.label, (ac, c) => c === 'ht' ? Nn(L.ht.V, 'amt', ugH.verm ? `ROUND(${ugH.vLen}*${ugH.rate},3)` : `ROUND(${ugH.cab}*10%,3)`) : NIL());
   lad('ABC', ugH ? 'A+B+C+V' : 'A+B+C', (ac, c) => Nn(L[c].ABC, 'amt', `SUM({${ac}:A},{${ac}:B},{${ac}:C}${ugH ? `,{${ac}:V}` : ''})`));
@@ -2571,7 +2573,7 @@ function specNC(est, cfg) {
   if (opt.matOnly) lad('GT', 'GRAND TOTAL (Material cost)', (ac, c) => Nn(L[c].GT, 'amt', `{${ac}:A}`, { b: true }), true);
   else {
   const ugH = L.ht.ug;
-  lad('B', 'Labour Ch @10% (B)' + (ugH ? ' (U/G: only 30 Mtr cable + joints)' : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
+  lad('B', 'Labour Ch @10% (B)' + (ugH ? ` (U/G: only ${ugH.lp} Mtr loop cable + joints)` : ''), (ac, c) => Nn(L[c].B, 'amt', c === 'ht' && ugH ? `ROUND(({${ac}:A}-${ugH.cab}+${ugH.cab30})*10%,3)` : `ROUND({${ac}:A}*10%,3)`));
   lad('C', 'Dismantle Charge (C)' + (old ? ' @10% of ' + old.kvaLabel + ' T/F' : ''), (ac, c) => (c === 'ss' && old) ? Nn(L.ss.C, 'amt', `ROUND(${num(old.rate)}*10%,3)`) : NIL());
   const twIdx = [], hasCV = ['lt', 'ht', 'ss'].some(c => L[c].CV > 0);
   (typeof rows !== 'undefined' ? rows : e.rows).forEach((r, i) => { if (/lattice|tower/i.test(r.name || '')) twIdx.push(i); });
@@ -2625,7 +2627,7 @@ function specSH(est, cfg) {
   R.push({ kind: 'lad', id: 'TA', cells: [S('TOTAL (a) Required  /  (b) Dismantled  /  (c) Re-used', { cs: 6, al: 'l', b: true }),
     Nn(L.a, 'amt', sum('G'), { b: true }), S(''), Nn(L.b, 'amt', sum('I'), { b: true }), S(''), Nn(L.c, 'amt', sum('K'), { b: true })] });
   const t1 = ['{G:TA}', '{G:LAB}', '{G:DIS}'];
-  lad('LAB', '10% LABOUR CHARGES on (a)' + (L.ug ? ' (U/G: only 30 Mtr cable + joints)' : ''), Nn(L.LAB, 'amt', L.ug ? `ROUND(({G:TA}-${L.ug.cab}+${L.ug.cab30})*10%,3)` : 'ROUND({G:TA}*10%,3)'));
+  lad('LAB', '10% LABOUR CHARGES on (a)' + (L.ug ? ` (U/G: only ${L.ug.lp} Mtr loop cable + joints)` : ''), Nn(L.LAB, 'amt', L.ug ? `ROUND(({G:TA}-${L.ug.cab}+${L.ug.cab30})*10%,3)` : 'ROUND({G:TA}*10%,3)'));
   lad('DIS', '10% DISMANTLING CHARGES on (b)', Nn(L.DIS, 'amt', 'ROUND({I:TA}*10%,3)'));
   if (L.civRow) {
     const idx = rows.indexOf(L.civRow);
@@ -2715,6 +2717,7 @@ function buildHT(inp, N, cat) {
   const cab = (q, label, svc) => { const r = rowFromCat(cat, 'c11_' + z); if (r && q > 0) { r.q = q; r.name += ' — ' + label; if (svc) r.svc = 1; rows.cable.push(r); } };
   cab(num(i.cableLen), 'service line', true);
   if (ugLine) cab(num(i.ugLine), 'from the tapping', false);
+  if (ugLine && num(i.ugLoop) > 0) cab(num(i.ugLoop), 'loop', true);   // loop: labour only, never vermiculite
   put('cable', 'cjk' + z + 'out', (i.ugOut == null ? 2 : num(i.ugOut)) + (ugLine ? 2 : 0));
   put('cable', 'stj' + z, num(i.ugStj));
   put('cable', 'cjk' + z + 'in', num(i.ugIn));
@@ -2809,7 +2812,7 @@ function specHTSheet(est, cfg, which) {
     head('U/G CABLE WORK — costing of cable work material'); cols();
     const sm = listOf(est.rows.cable);
     lad('A', 'TOTAL', L.C.A, sm, true);
-    lad('V', 'Vermiculite charges on the cable other than the 30 Mtr loop and service line', L.C.verm, `${L.C.verm}`);
+    lad('V', 'Vermiculite charges on the cable other than the loop and the service line', L.C.verm, `${L.C.verm}`);
     lad('LB', 'Labour charges @10% on the loop and service cable and the joint kits', L.C.lab, `${L.C.lab}`);
     lad('T1', 'TOTAL', L.C.t1, 'SUM({F:A},{F:V},{F:LB})', true);
     lad('OH', 'Overhead charges @20%', L.C.oh, 'ROUND({F:T1}*20%,3)');
@@ -3473,7 +3476,7 @@ function newEstimate(type) {
   if (type === 'ht') { e.head.title = 'Estimate for NEW HT-LIP CONNECTION';
     e.inp = { kind: 'new', cableLen: 30, ugSize: '185', ugOut: 2, ugStj: '', ugIn: '', htDist: '', turns: 0, takeoff: 'P', tfKVA: 63, withTF: false, lattice: '', pins: 9, jumper: 15,
       ctpt: 'ctpt10', httvm: true, htbox: true, mapRoom: true, mapDo: true, mapTF: "CONSUMER'S T/F", mapGap: 2 };
-    e.opt = { dismantle: 0, civilKey: '', vermRate: 335.39 }; e.rows = { cable: [], ss: [], mn: [], ma: [] }; }
+    e.opt = { dismantle: 0, civilKey: '', vermRate: vermDefault() }; e.rows = { cable: [], ss: [], mn: [], ma: [] }; }
   if (type === 'cm') { e.head.title = 'Estimate of LT/HT/SS MATERIAL and Metering Equipments';
     e.inp = { phase: '3', htMode: 'OH', htDist: '', turns: 0, takeoff: 'P', withSS: true, tfKVA: 16, mount: 'D', ltDist: '', ltPhase: '3', ltFit: 'clamp', svcLen: '', meter: false };
     e.opt = { preset: '', supHT: false, oldTF: null }; applyPreset(e, 'phed'); }
@@ -3481,8 +3484,11 @@ function newEstimate(type) {
     e.inp = { htMode: 'OH', htDist: '', turns: 0, takeoff: 'P', withSS: true, tfKVA: 63, mount: 'D', ltCable: '', htCable: '', cjk: 0, lttvm: true, mipBox: true, ct: 4 }; e.opt = { oldTF: null }; }
   if (type === 'ma') { e.head.title = 'MATERIAL ESTIMATE'; e.inp = {}; e.opt = { matOnly: false, colLabel: 'HT' }; e.built = true; e.qcol = 'req'; }
   if (type === 'sis') { e.inp = { oldPh: '3', oldKVA: 16, oldMount: 'D', newPh: '3', newKVA: 25, newMount: 'D' }; e.opt = {}; e.head.title = sisTitle(e.inp); }
+  if (['nc', 'sh', 'cm', 'mip', 'ht'].includes(type)) { e.inp.ugLoop = 30; e.opt.ugLoop = 30; if (e.opt.vermRate == null) e.opt.vermRate = vermDefault(); }
   return e;
 }
+/* vermiculite rate for a new estimate: the Rate list figure (ACR rate), else 356.69 */
+function vermDefault() { const it = App.cat && App.cat.byKey && App.cat.byKey.vermic; return (it && num(it.rate)) || 356.69; }
 function sisTitle(i) {
   const o = `${i.oldKVA} KVA ${i.oldPh}-Ph T/F`, n = `${i.newKVA} KVA ${i.newPh}-Ph T/F`;
   if (i.oldPh === i.newPh && +i.oldKVA === +i.newKVA) return `Estimate for Shifting of ${o} from ${i.oldMount === 'S' ? 'Single Pole' : 'Double Pole'} to ${i.newMount === 'S' ? 'Single Pole' : 'Double Pole'} S/S`;
@@ -3766,11 +3772,11 @@ function htBlock(e, sh) {
     <p class="hint">The sub-station stands right below the existing 11 KV line, so no line poles and no cut point are taken — only the jumper from the line down to the transformer.${ph3 ? ' A 3-Ph S/S always carries a V-cross with 3 pin insulators on each of its poles, so those are included.' : ''} Every figure above can be changed in the material list.</p>`;
   }
   if (ug) return `<div class="grid2">${mode}${seg('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']])}${phase}
-    ${fld('Cable length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
+    ${fld(i.ugLoop == null ? 'Cable length incl. 30 Mtr loop (metre)' : 'Route length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: i.ugLoop == null ? 'in the length' : '0' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
     ${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
     ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + ((e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
-    ${chk('Vermiculite @ Rs.335.39/Mtr on cable beyond 30 Mtr (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
-    <p class="hint">From your HT-connection cable sheet: labour 10% only on 30 Mtr of cable plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
+    ${chk(`Vermiculite @ Rs.${num(e.opt.vermRate) || 335.39}/Mtr on the route length, not on the loop (untick for civil 10% on cable instead)`, 'opt.verm', e.opt.verm !== false)}
+    <p class="hint">Cable taken = route + loop. Vermiculite on the route only; labour 10% on the loop cable plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
   return `<div class="grid2">${mode}
     ${fld('Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${phase}
     ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}
@@ -3810,8 +3816,8 @@ function cardHT(e) {
     ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
        <p class="hint">Poles, cross arms, pins, cut points, DP and conductor come from your span rule, like a new connection. The S/S set at the premises is added too.</p>`
     : mode === 'UG'
-    ? `<div class="grid2">${fld('11 KV U/G cable from the tapping (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
-       <p class="hint">At the tapping on the existing line: 1 PCC pole, 1 cut point and 3 disc with H/W; 2 outdoor CJK for this cable. Vermiculite is charged on this length.</p>`
+    ? `<div class="grid2">${fld('11 KV U/G cable route from the tapping (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
+       <p class="hint">At the tapping on the existing line: 1 PCC pole, 1 cut point and 3 disc with H/W; 2 outdoor CJK for this cable. The loop is its own cable row over the route: vermiculite on the route only, labour 10% on the loop with the service cable and the joints.</p>`
     : `<p class="hint">Under the line — the fixed set: 2 poles, 2 V-cross, 6 pin insulators, 1 S/S structure, 3 earthing, 1 horn gap fuse set, 7 kg nut-bolt, 2 stay complete, and the jumper. Nothing else is added.</p>`;
   return `<div class="card"><div class="h3">Kind of HT work</div>
     ${seg('', 'inp.kind', i.kind || 'new', [['new', 'New connection'], ['ext', 'Load extension'], ['red', 'Load reduction']], 'span2')}
@@ -3965,8 +3971,9 @@ function matCardHT(e) {
       <div class="ma">${fmtAmt(r3(num(r.q) * num(r.rate)))}</div>
       <button class="mx" data-act="htdel" data-b="${blk}" data-i="${i}" aria-label="Remove ${esc(r.name)}">${I.x}</button></div>`;
   const any = HT_BLK.some(([b]) => (e.rows[b] || []).length);
-  if (!any) return '<p class="hint">Fill the boxes on the left and press Build estimate.</p>';
-  return HT_BLK.map(([blk, label]) => (e.rows[blk] || []).length
+  const bar = `<div class="h3">Material <span class="btnrow" style="margin:0"><button class="btn btn-sm btn-ink" data-act="additem">Add item</button></span></div>`;
+  if (!any) return bar + '<p class="hint">Fill the boxes on the left and press Build estimate. Items can also be added with Add item.</p>';
+  return bar + HT_BLK.map(([blk, label]) => (e.rows[blk] || []).length
     ? `<div class="h4" style="margin-top:10px">${label}</div>${e.rows[blk].map((r, i) => row(blk, r, i)).join('')}` : '').join('')
     + '<p class="hint">Any figure here can be changed; the sheets and the totals follow it.</p>';
 }
@@ -4114,6 +4121,8 @@ function doBuild() {
   const go2 = () => {
     if (e.type === 'ht') {
       const b = buildHT(e.inp, N, App.cat);
+      const prevHT = e.rows && !Array.isArray(e.rows) ? e.rows : {};           // items added by hand stay
+      Object.keys(b.rows).forEach(k => (prevHT[k] || []).filter(r => r.man && !b.rows[k].some(x => x.key === r.key)).forEach(r => b.rows[k].push(r)));
       e.rows = b.rows; e.info = null; e.opt.serviceLen = b.serviceLen; e.built = true; e.stale = false; touch(); render(); toast('Estimate built'); return;
     }
     if (e.type === 'nc' || e.type === 'sh' || e.type === 'mip' || e.type === 'cm') {
@@ -4129,6 +4138,7 @@ function doBuild() {
       }
       if (e.type === 'sh' && e.reuse && e.reuse.on) applyReuse(b.rows, e.reuse, N, e.inp.dPhase || '3');
       e.rows = b.rows; e.info = b.info;
+      if (e.inp.ugLoop != null) e.opt.ugLoop = e.inp.ugLoop;          // the ladder splits the cable into route and loop with this
     } else { const b = buildSIS(e.inp, App.cat, N); e.rows = b.rows; e.info = b.info; }
     e.built = true; e.stale = false; e.edited = false; touch(); renderEditor(); toast('Estimate built');
     const mc = $('#matCard'); if (mc && window.innerWidth < 1100) mc.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4176,6 +4186,7 @@ function openAddItem() {
   const sis = App.est.type === 'sis';
   openSheet(`<div class="h3">Add material</div>
     <input class="srch" id="aiq" type="search" placeholder="Search the SIR list, e.g. cable 185, CJK, 63 KVA" autocomplete="off" aria-label="Search material">
+    ${App.est.type === 'ht' ? `<div class="seg" style="margin-bottom:10px" role="radiogroup" aria-label="Add to">${[['cable', 'Cable'], ['ss', 'S/S'], ['mn', 'Meter (Nigam)'], ['ma', 'Meter (supervision)']].map(([b, l]) => `<button type="button" role="radio" aria-checked="${(App.aiHtBlk || 'ss') === b}" data-aihtblk="${b}">${l}</button>`).join('')}</div>` : ''}
     ${sis ? `<div class="seg" style="margin-bottom:10px" role="radiogroup"><button type="button" role="radio" aria-checked="${App.aiBlk === 'A'}" data-aiblk="A">Block A proposed</button><button type="button" role="radio" aria-checked="${App.aiBlk === 'B'}" data-aiblk="B">Block B dismantled</button></div>` : ''}
     <div id="ail"></div><div class="btnrow"><button class="btn btn-quiet" data-act="closesheet">Close</button></div>`, 'Add material');
   renderAI('');
@@ -4187,7 +4198,14 @@ function renderAI(q) {
 }
 function addRow(key) {
   const e = App.est, it = App.cat.byKey[key]; if (!it) return;
-  if (e.type === 'ht') { toast('Use the boxes on the left for an HT estimate'); return; }
+  if (e.type === 'ht') {
+    const b = App.aiHtBlk || 'ss'; if (!e.rows[b]) e.rows[b] = [];
+    if (e.rows[b].some(r => r.key === key)) { toast('Already in this block'); return; }
+    e.rows[b].push({ key, name: it.name, sno: it.sno || '', tn: it.tn || '', unit: it.unit, rate: it.rate, q: 0, man: 1 });
+    e.built = true; e.edited = true; closeSheet(); touch(); rerenderKeepScroll(); refreshCalc();
+    const row = $('#mr' + b + (e.rows[b].length - 1)); if (row) { row.scrollIntoView({ block: 'center' }); const q = row.querySelector('input[data-f="q"]'); if (q) q.focus(); }
+    toast('Added — enter its quantity'); return;
+  }
   if (e.type !== 'sis' && e.rows.some(r => r.key === key)) { toast('Already in the list'); return; }
   const r = { key, name: it.name, sno: it.sno || '', unit: it.unit, rate: it.rate };
   if (e.type === 'nc') r.q = { lt: 0, ht: 0, ss: 0 };
@@ -4543,6 +4561,7 @@ function onClick(ev) {
   if (d.key && t.classList.contains('pick')) { addRow(d.key); return; }
   if (d.quick) { openQuick(d.quick); return; }
   if (d.preset) { const e = App.est; applyPreset(e, d.preset); if (e.built) e.stale = true; touch(); rerenderKeepScroll(); return; }
+  if (d.aihtblk) { App.aiHtBlk = d.aihtblk; t.parentNode.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', b === t)); return; }
   if (d.aiblk) { App.aiBlk = d.aiblk; t.parentNode.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', b === t)); return; }
   if (d.rate && t.classList.contains('rrow')) { openRate(d.rate); return; }
   if (d.ftype) { App.f.type = d.ftype; render(); return; }
