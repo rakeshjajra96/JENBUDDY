@@ -890,7 +890,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '29.09.2026 14:30';
+const APP_VERSION = '30.09.2026 12:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -2115,11 +2115,14 @@ function rowFromCat(cat, key) {
    Estimates made before the loop box keep their old working: the length they hold already includes a 30 Mtr loop.
    Vermiculite and civil are mutually exclusive on the cable: if vermiculite is off, civil 10% is taken on the cable instead. */
 const UG_CABLE = /^c11_(185|120|300|70)$/;
-function addUG(o, inp, ph) {
+function addUG(o, inp, ph, set) {
   const L = num(inp.ugLen); if (!(L > 0)) return;
-  if (inp.ugTap !== false) {            // tapping on the existing line (Rakesh, 11.09.2026): 1 pole, 1 cut point, 3 disc with H/W
-    const d = ph === '1' ? 1 : 3, add = (k, q) => { o[k] = r3(num(o[k]) + q); };
-    add('pole9_200', 1); add('ch14', 1); add('disc11', d); add('hw45tc', d);
+  // tapping on the existing line (Rakesh, 11.09.2026): 1 pole, 1 cut point, 3 disc with H/W.
+  // Overhead + U/G: the pole where the line goes into the cable gets the same set; a crossing in the middle has two such points.
+  const t = set || (inp.ugTap !== false ? { cuts: 1, poles: 1 } : { cuts: 0, poles: 0 });
+  if (t.cuts > 0 || t.poles > 0) {
+    const d = ph === '1' ? 1 : 3, add = (k, q) => { if (q > 0) o[k] = r3(num(o[k]) + q); };
+    add('pole9_200', t.poles); add('ch14', t.cuts); add('disc11', d * t.cuts); add('hw45tc', d * t.cuts);
   }
   const z = inp.ugSize === '120' ? '120' : '185';
   o['c11_' + z] = r3(L + num(inp.ugLoop));             // the loop goes over the route length
@@ -2127,6 +2130,14 @@ function addUG(o, inp, ph) {
   if (out > 0) o['cjk' + z + 'out'] = out;
   if (num(inp.ugIn) > 0) o['cjk' + z + 'in'] = num(inp.ugIn);
   if (num(inp.ugStj) > 0) o['stj' + z] = num(inp.ugStj);
+}
+/* Overhead + U/G (mode 'OU'): the overhead line is worked out as usual; the U/G cable either runs into the S/S
+   (the S/S then has no termination discs, and the last overhead pole carries the cut point into the cable)
+   or is a crossing in the middle of the line (two cut points, the S/S keeps its discs). */
+function addOU(ht, ss, inp, ph, withSS) {
+  const toSS = inp.ugToSS !== false && withSS;
+  if (toSS && ss) { delete ss.disc11; delete ss.hw45tc; }
+  addUG(ht, inp, ph, toSS ? { cuts: 1, poles: 1 } : { cuts: 2, poles: 1 });
 }
 function ugInfo(rows, c, opt) {
   opt = opt || {}; let L = 0, cab = 0, cab30 = 0;
@@ -2153,9 +2164,10 @@ function ulSet(ph, kva, N, withTF) {
   return o;
 }
 function buildNC(inp, N, cat) {
-  const ug = inp.htMode === 'UG', ul = inp.htMode === 'UL';
+  const ug = inp.htMode === 'UG', ul = inp.htMode === 'UL', ou = inp.htMode === 'OU';
   const parts = buildLineParts(Object.assign({}, inp, ug || ul ? { htDist: 0 } : {}), N);
   if (ug) { delete parts.ss.disc11; delete parts.ss.hw45tc; addUG(parts.ht, inp, inp.htPhase === '1' ? '1' : '3'); }
+  if (ou) addOU(parts.ht, parts.ss, inp, inp.htPhase === '1' ? '1' : '3', inp.withSS !== false);
   const keys = new Set([...Object.keys(parts.lt), ...Object.keys(parts.ht), ...Object.keys(parts.ss)]);
   const rows = [];
   [...keys].sort((a, b) => orderIndex(a) - orderIndex(b)).forEach(k => {
@@ -2197,9 +2209,10 @@ function ladderNC(rows, opt) {
 const NO_DISMANTLE = /^(pole|stay|earthing)/;   // poles, stay items and earthing are never dismantled or re-used
 const DIS_SKIP = /^(pole|stay|earthing|nutbolt)/;   // never auto-taken in the dismantle column
 function buildSH(inp, N, cat) {
-  const ug = inp.htMode === 'UG';
+  const ug = inp.htMode === 'UG', ou = inp.htMode === 'OU';
   const parts = buildLineParts(Object.assign({}, inp, { withTF: false, fuse: false }, ug ? { htDist: 0 } : {}), N);
   if (ug) { delete parts.ss.disc11; delete parts.ss.hw45tc; addUG(parts.ht, inp, inp.htPhase === '1' ? '1' : '3'); }
+  if (ou) addOU(parts.ht, parts.ss, inp, inp.htPhase === '1' ? '1' : '3', inp.withSS === true);
   const req = {};
   [parts.ht, parts.ss, parts.lt].forEach(o => Object.keys(o).forEach(k => { req[k] = r3((req[k] || 0) + o[k]); }));
   // existing line / S/S / LT being dismantled: same quantity norms, minus poles, stays, earthing, nut & bolt
@@ -2380,12 +2393,13 @@ const CONN_ORDER = ['pole9_200', 'vcross11', 'tophamper11', 'pin11', 'ssstr_dp',
   'lttvm', 'mtr1', 'mtr3', 'mipbox', 'ltct100'];
 function connOrder(k) { const i = CONN_ORDER.indexOf(k); return i < 0 ? 500 + orderIndex(k) : i; }
 function buildConn(inp, N, cat, kind) {
-  const ph = kind === 'mip' ? '3' : (inp.phase === '1' ? '1' : '3'), ug = inp.htMode === 'UG', ul = inp.htMode === 'UL';
+  const ph = kind === 'mip' ? '3' : (inp.phase === '1' ? '1' : '3'), ug = inp.htMode === 'UG', ul = inp.htMode === 'UL', ou = inp.htMode === 'OU';
   const parts = buildLineParts({ htDist: ug || ul ? 0 : inp.htDist, htPhase: ph, turns: inp.turns, takeoff: inp.takeoff, withSS: inp.withSS !== false,
     tfKVA: inp.tfKVA, mount: kind === 'mip' ? 'D' : inp.mount, ltDist: 0, htMode: ul ? 'UL' : '' }, N);
   const col = {}; CONN[kind].cols.forEach(([c]) => { col[c] = {}; });
   Object.assign(col.ht, parts.ht); Object.assign(col.ss, parts.ss);
   if (ug) { delete col.ss.disc11; delete col.ss.hw45tc; addUG(col.ht, inp, ph); }
+  if (ou) addOU(col.ht, col.ss, inp, ph, inp.withSS !== false);
   ['ht', 'ss'].forEach(c => { const o = col[c]; if (o.disc11) { o.disc11hw = o.disc11; delete o.disc11; delete o.hw45tc; } });
   if (kind === 'mip') {
     if (num(inp.ltCable) > 0) col.lt.lt4c70arm = num(inp.ltCable);
@@ -2486,7 +2500,8 @@ function specConn(est, cfg, kind) {
       R.push({ kind: 'sum', id, cells: [S(label, { cs: 10, al: 'l' }), Nn(L[c].GT, 'amt', `{${AC[cols.indexOf(c)]}:GT}`, { cs: 5 })] }));
     R.push({ kind: 'sum', id: 'S6', cells: [S('TOTAL', { cs: 10, al: 'l', b: true }), Nn(L.total, 'amt', 'SUM({K:S1}:{K:S5})', { cs: 5, b: true })] });
   } else {
-    const htLen = inp.htMode === 'UG' ? `U/G ${num(inp.ugLen)} MTR` : inp.htMode === 'UL' ? 'UNDER THE LINE' : (num(inp.htDist) ? `${ph === '1' ? 1 : 3}X${num(inp.htDist)} MTR` : '');
+    const htLen = inp.htMode === 'UG' ? `U/G ${num(inp.ugLen)} MTR` : inp.htMode === 'UL' ? 'UNDER THE LINE'
+      : inp.htMode === 'OU' ? `O/H ${ph === '1' ? 1 : 3}X${num(inp.htDist)} MTR + U/G ${num(inp.ugLen)} MTR` : (num(inp.htDist) ? `${ph === '1' ? 1 : 3}X${num(inp.htDist)} MTR` : '');
     const lines = [['S1', `Estimate Cost of LT LINE${num(inp.ltDist) ? ` (${num(inp.ltDist)} MTR)` : ''}`, 'lt'],
       ['S2', `Estimate Cost of HT LINE${htLen ? ` (${htLen})` : ''}`, 'ht'],
       ['S3', kva ? `Estimate Cost of S/S ${kva} KVA ${ph === '1' ? '1P' : '3P'} TF` : 'Estimate Cost of S/S Material', 'ss']];
@@ -2710,7 +2725,7 @@ function buildHT(inp, N, cat) {
   const i = inp || {}, ug = num(i.cableLen) > 0;
   // how the supply reaches the premises: under the line / new overhead line / new U/G cable
   const mode = i.lineMode || (num(i.htDist) > 0 ? 'OH' : 'UL');
-  const line = mode === 'OH' && num(i.htDist) > 0, ugLine = mode === 'UG' && num(i.ugLine) > 0;
+  const line = (mode === 'OH' || mode === 'OU') && num(i.htDist) > 0, ugLine = (mode === 'UG' || mode === 'OU') && num(i.ugLine) > 0;
   const rows = { cable: [], ss: [], mn: [], ma: [] };
   const put = (blk, key, q) => { const r = rowFromCat(cat, key); if (r && q > 0) { r.q = q; rows[blk].push(r); } };
   // 1. cable
@@ -2723,7 +2738,18 @@ function buildHT(inp, N, cat) {
   put('cable', 'stj' + z, num(i.ugStj));
   put('cable', 'cjk' + z + 'in', num(i.ugIn));
   // 2. S/S material
-  if (line) {                                            // a line is to be erected: the usual distance formula
+  if (line && ugLine) {                                  // overhead line, then U/G cable into the S/S
+    const parts = buildLineParts({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: false }, N);
+    const all = {}, add = (k, q) => { all[k] = r3((all[k] || 0) + q); };
+    Object.keys(parts.ht).forEach(k => add(k, parts.ht[k]));       // the line lands on the pole where the cable starts
+    add('ch14', 1); add('disc11', 3); add('hw45tc', 3); add('pole9_200', 3);   // that pole's cut point + the D/P S/S poles
+    add('stayclamp', 2); add('stayins', 2); add('stayset', 2); add('staywire', 2 * N.stayWireKg);
+    add('pin11', 6); add('vcross11', 2); add('nutbolt', N.nbSS == null ? 7 : num(N.nbSS)); add('rabbit', N.jumper3); add('earthing', N.earthing);
+    add('hgfuse11', 1); add('ssstr_dp', 1);
+    if (i.withTF === true && num(i.tfKVA)) add(tfKey('3', num(i.tfKVA)), 1);
+    if (num(i.lattice)) add('lattice36', num(i.lattice));
+    Object.keys(all).sort((a, b) => orderIndex(a) - orderIndex(b)).forEach(k => put('ss', k, all[k]));
+  } else if (line) {                                     // a line is to be erected: the usual distance formula
     const parts = buildLineParts({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff,
       withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: i.withTF === true }, N);
     const all = {}; [parts.ht, parts.ss].forEach(o => Object.keys(o).forEach(k => { all[k] = r3((all[k] || 0) + o[k]); }));
@@ -3605,10 +3631,13 @@ function matSummary(e) {
 function buildNudge() {
   const e = App.est; if (!e) return false; const i = e.inp || {}, h = e.head || {};
   let m = null;
+  if (['nc', 'cm', 'mip', 'sh'].includes(e.type) && i.htMode === 'OU' && (!num(i.htDist) || !num(i.ugLen)) && $('[data-bind="inp.ugLen"]'))
+    { const f = $(!num(i.htDist) ? '[data-bind="inp.htDist"]' : '[data-bind="inp.ugLen"]'); if (f) { f.focus(); toast(!num(i.htDist) ? 'Enter the overhead length' : 'Enter the U/G route length'); return true; } }
   if (['nc', 'cm', 'mip'].includes(e.type) && i.htMode !== 'UL' && !num(i.htDist) && !num(i.ltDist) && !num(i.ugLen) && $('[data-bind="inp.htDist"]'))
     m = { msg: 'The line length is empty, so only the sub-station will be taken.', fix: 'Add the line length', sel: '[data-bind="inp.htDist"]' };
   else if (e.type === 'ht' && (i.lineMode === 'OH' && !num(i.htDist)))
     m = { msg: 'Overhead line is chosen but its length is empty.', fix: 'Add the line length', sel: '[data-bind="inp.htDist"]' };
+  else if (e.type === 'ht' && (i.lineMode === 'OU' && (!num(i.htDist) || !num(i.ugLine)))) { toast(!num(i.htDist) ? 'Enter the overhead length' : 'Enter the U/G route length'); return true; }
   else if (e.type === 'ht' && (i.lineMode === 'UG' && !num(i.ugLine)))
     m = { msg: 'U/G cable is chosen but its length is empty.', fix: 'Add the cable length', sel: '[data-bind="inp.ugLine"]' };
   else if (['nc', 'cm', 'mip', 'ht'].includes(e.type) && !String(h.applicant || '').trim() && $('[data-bind="head.applicant"]'))
@@ -3759,29 +3788,41 @@ function cardLine(e) {
     ${fld('Length (metre)', 'inp.ltDist', i.ltDist, { n: 1, ph: '0' })}${seg('Phase', 'inp.ltPhase', i.ltPhase, [['3', '3-Ph'], ['1', '1-Ph']])}</div></div>`;
 }
 function htBlock(e, sh) {
-  const i = e.inp, ug = !sh && i.htMode === 'UG';
-  const ul = !sh && i.htMode === 'UL';
-  const mode = seg('Line type', 'inp.htMode', ug ? 'UG' : ul ? 'UL' : 'OH',
-    sh ? [['OH', 'Overhead'], ['UG', 'U/G cable']] : [['OH', 'Overhead'], ['UG', 'U/G cable'], ['UL', 'Under the line']], 'span2');
+  const i = e.inp, m = i.htMode || 'OH';
+  const ug = m === 'UG', ou = m === 'OU', ul = !sh && m === 'UL';
+  const mode = seg('Line type', 'inp.htMode', ul ? 'UL' : ug ? 'UG' : ou ? 'OU' : 'OH',
+    sh ? [['OH', 'Overhead'], ['UG', 'U/G cable'], ['OU', 'OH + U/G']] : [['OH', 'Overhead'], ['UG', 'U/G'], ['OU', 'OH + U/G'], ['UL', 'Under line']], 'span2');
   const pp = e.type === 'cm' ? 'inp.phase' : 'inp.htPhase', phase = e.type === 'mip' ? '<div></div>' : seg('Phase', pp, (getPath(e, pp) || '3'), [['3', '3-Ph'], ['1', '1-Ph']]);
+  const ph1 = (e.type === 'cm' ? i.phase : i.htPhase) === '1';
   if (ul) {
-    const ph3 = (e.type === 'cm' ? i.phase : i.htPhase) !== '1';
+    const ph3 = !ph1;
     const N = App.settings.norms;
     return `<div class="grid2">${mode}${phase}
       </div>
     <p class="hint" style="margin:-2px 0 8px">Jumper ${ph3 ? N.jumper3 : N.jumper1} Mtr (5 Mtr a phase), 2 stay sets and ${N.earthing} earthing sets are fixed for an under-line S/S.</p>
     <p class="hint">The sub-station stands right below the existing 11 KV line, so no line poles and no cut point are taken — only the jumper from the line down to the transformer.${ph3 ? ' A 3-Ph S/S always carries a V-cross with 3 pin insulators on each of its poles, so those are included.' : ''} Every figure above can be changed in the material list.</p>`;
   }
-  if (ug) return `<div class="grid2">${mode}${seg('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']])}${phase}
-    ${fld(i.ugLoop == null ? 'Cable length incl. 30 Mtr loop (metre)' : 'Route length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: i.ugLoop == null ? 'in the length' : '0' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
-    ${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
-    ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + ((e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
-    ${chk('Vermiculite on the route length, not on the loop (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
-    ${e.opt.verm !== false ? `<div class="grid2">${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}<div></div></div>` : ''}
+  const size = seg('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']]);
+  const ugBoxes = `${fld(i.ugLoop == null ? 'Cable length incl. 30 Mtr loop (metre)' : (ou ? 'U/G route length (metre)' : 'Route length (metre)'), 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: i.ugLoop == null ? 'in the length' : '0' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
+    ${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}`;
+  const verm = `${chk('Vermiculite on the route length, not on the loop (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
+    ${e.opt.verm !== false ? `<div class="grid2">${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}<div></div></div>` : ''}`;
+  const ohBoxes = `${fld(ou ? 'Overhead length (metre)' : 'Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${ou ? '' : phase}
+    ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}`;
+  if (ug) return `<div class="grid2">${mode}${size}${phase}
+    ${ugBoxes}</div>
+    ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + (ph1 ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
+    ${verm}
     <p class="hint">Cable taken = route + loop. Vermiculite on the route only; labour 10% on the loop cable plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
+  if (ou) return `<div class="grid2">${mode}${phase}
+    ${ohBoxes}</div>
+    <div class="h4" style="margin-top:12px">U/G cable part</div>
+    <div class="grid2">${size}<div></div>${ugBoxes}</div>
+    ${chk('The cable goes into the S/S (untick if the cable is only a crossing in the middle of the line)', 'inp.ugToSS', i.ugToSS !== false)}
+    ${verm}
+    <p class="hint">The overhead part is worked out like any line (span, cut point at the take-off, stays, DP). ${i.ugToSS !== false ? 'Where it goes into the cable: 1 PCC pole with 1 cut point and ' + (ph1 ? '1 disc' : '3 disc') + ' with H/W; the S/S has no termination discs because the cable feeds it.' : 'A crossing: 2 cut points with ' + (ph1 ? '1 disc' : '3 disc') + ' with H/W each (one pole is already in the line count, one is added); the S/S keeps its discs.'} Both lines print in the same HT column, so labour, vermiculite and the rest follow the usual rules. Any figure can be changed in the material list.</p>`;
   return `<div class="grid2">${mode}
-    ${fld('Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${phase}
-    ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}
+    ${ohBoxes}
     </div><p class="hint" style="margin-top:8px">Span 50 m. Take-off from an existing pole adds one cut point; a new point adds only the starting stay.</p>`;
 }
 const SUPPLY_OPTS = [['24 HOURS SUPPLY', '24 hours supply'], ['BLOCK HOURS SUPPLY', 'Block hours supply'],
@@ -3814,7 +3855,12 @@ function applyPreset(e, k) {
 function ctptOptions() { return App.cat.list.filter(x => /^ctpt/.test(x.key)).map(x => [x.key, x.name.replace('11 KV CT-PT Set ', '') + '  (' + fmtRs(x.rate) + ')']); }
 function cardHT(e) {
   const i = e.inp, mode = i.lineMode || (num(i.htDist) > 0 ? 'OH' : 'UL');
-  const lineBody = mode === 'OH'
+  const ugF = `${fld('11 KV U/G cable route ' + (mode === 'OU' ? 'from the last overhead pole' : 'from the tapping') + ' (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}`;
+  const lineBody = mode === 'OU'
+    ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
+       <div class="h4" style="margin-top:12px">U/G cable part (into the S/S)</div><div class="grid2">${ugF}</div>
+       <p class="hint">The overhead part follows your span rule. The pole where it goes into the cable gets 1 cut point and 3 disc with H/W; 2 outdoor CJK for this cable. Vermiculite on the cable route only; the loop goes under labour 10%.</p>`
+    : mode === 'OH'
     ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
        <p class="hint">Poles, cross arms, pins, cut points, DP and conductor come from your span rule, like a new connection. The S/S set at the premises is added too.</p>`
     : mode === 'UG'
@@ -3825,7 +3871,7 @@ function cardHT(e) {
     ${seg('', 'inp.kind', i.kind || 'new', [['new', 'New connection'], ['ext', 'Load extension'], ['red', 'Load reduction']], 'span2')}
     <p class="hint">The heading on every sheet, the note sheet and the TFR remark follow this choice.</p></div>
   <div class="card"><div class="h3">11 KV line to the premises</div>
-    ${seg('Line type', 'inp.lineMode', mode, [['UL', 'Under the line'], ['OH', 'Overhead line'], ['UG', 'U/G cable']], 'span2')}
+    ${seg('Line type', 'inp.lineMode', mode, [['UL', 'Under line'], ['OH', 'Overhead'], ['UG', 'U/G'], ['OU', 'OH + U/G']], 'span2')}
     ${lineBody}</div>
   <div class="card"><div class="h3">Service line (U/G cable to the meter room)</div><div class="grid2">
     ${fld('Service cable (metre) — usually 30', 'inp.cableLen', i.cableLen, { n: 1 })}${sel('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']])}
@@ -6115,6 +6161,7 @@ function sldInfo(e) {
   const i = e.inp || {}, h = e.head || {};
   const ht = e.type === 'ht';
   const ug = i.htMode === 'UG' || (ht && num(i.cableLen) > 0);
+  const ou = !ht && i.htMode === 'OU';
   const ul = i.htMode === 'UL' || (ht && !num(i.htDist));
   const ph = (e.type === 'sis' ? i.newPh : e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1' : '3';
   let kva = ht ? (i.withTF === true ? num(i.tfKVA) : 0) : (i.withSS !== false ? num(i.tfKVA) : 0), oldKVA = 0, oldPh = '';
@@ -6127,7 +6174,7 @@ function sldInfo(e) {
     try { info = buildLineParts({ htDist: ug ? 0 : htLen, htPhase: ph, turns: i.turns, takeoff: i.takeoff, withSS: i.withSS !== false,
       tfKVA: kva, mount, ltDist: num(i.ltDist) || num(i.ltCable), ltPhase: i.ltPhase }, N).info; } catch (er) { info = {}; }
   }
-  return { ug, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
+  return { ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
     cable: i.ugSize === '120' ? '3C x 120 sqmm' : '3C x 185 sqmm', out: i.ugOut == null ? 2 : num(i.ugOut), stj: num(i.ugStj), inn: num(i.ugIn),
     ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen),
     poles: ht ? rowQty(e, 'pole9_200', 'ht', 2) : ug ? 0 : rowQty(e, 'pole9_200', 'ht', num(info.linePoles) + num(info.dp)), dp: num(info.dp),
@@ -6141,14 +6188,17 @@ function sldWork(e) {
   if (e.type === 'sh') { const d = e.inp || {};
     if (num(d.dDist)) p.push(`Dismantling of ${num(d.dDist)} Mtr existing 11 KV line`);
     if (s.htLen) p.push(s.ug ? `Laying of ${s.htLen} Mtr 11 KV ${s.cable} underground cable` : `Erection of ${s.htLen} Mtr 11 KV line on ${s.poles} Nos PCC poles at the new alignment`);
+    if (s.ou && s.ugLen) p.push(`Laying of ${s.ugLen} Mtr 11 KV ${s.cable} underground cable with ${s.out} Nos outdoor termination kit`);
     if (!s.htLen && s.kva) p.push(`Re-erection of the ${s.kva} KVA sub-station structure`);
     if (num(e.opt && e.opt.tfShift)) p.push(`Shifting of ${num(e.opt.tfShift)} Nos distribution transformer with its structure`);
     if (p.length) return p; }
   if (e.type === 'ht') {
     const i2 = e.inp || {}, out = [];
     if (num(i2.cableLen)) out.push(`${num(i2.cableLen)} Mtr 11 KV ${i2.ugSize === '120' ? '3C x 120' : '3C x 185'} sqmm XLPE underground service cable with ${num(i2.ugOut) || 2} Nos outdoor termination kit`);
-    if (num(i2.htDist)) out.push(`${num(i2.htDist)} Mtr 11 KV overhead line on ${s.poles} Nos PCC poles`);
-    else out.push(`Sub-station structure under the existing 11 KV line with a ${s.jumper} Mtr jumper`);
+    const lm = i2.lineMode || (num(i2.htDist) > 0 ? 'OH' : 'UL'), ugl = (lm === 'UG' || lm === 'OU') && num(i2.ugLine);
+    if (num(i2.htDist) && (lm === 'OH' || lm === 'OU')) out.push(`${num(i2.htDist)} Mtr 11 KV overhead line on ${s.poles} Nos PCC poles`);
+    if (ugl) out.push(`${num(i2.ugLine)} Mtr 11 KV ${i2.ugSize === '120' ? '3C x 120' : '3C x 185'} sqmm XLPE underground cable ${lm === 'OU' ? 'from the last overhead pole' : 'from the tapping on the existing line'} to the sub-station${num(i2.ugStj) ? ` with ${num(i2.ugStj)} Nos straight through joint` : ''}`);
+    if (!ugl && !(num(i2.htDist) && (lm === 'OH' || lm === 'OU'))) out.push(`Sub-station structure under the existing 11 KV line with a ${s.jumper} Mtr jumper`);
     const ct = (App.cat.byKey[i2.ctpt] || {}).name;
     out.push(`Metering: ${ct ? ct : 'CT-PT set'}${i2.httvm !== false ? ' with HT TVM meter 0.2s' : ''}${i2.htbox !== false ? ', and HT meter box on supervision' : ''}`);
     return out;
@@ -6156,6 +6206,7 @@ function sldWork(e) {
   if (s.ul) p.push(`${s.jumper} Mtr jumper from the existing 11 KV line to the proposed sub-station`);
   if (s.htLen) p.push(s.ug ? `${s.htLen} Mtr 11 KV ${s.cable} XLPE underground cable with ${s.out} Nos outdoor termination kit${s.stj ? ` and ${s.stj} Nos straight through joint` : ''}`
     : `${s.htLen} Mtr 11 KV ${s.ph === '1' ? 'single' : 'three'} phase overhead line on ${s.poles} Nos PCC poles${s.dp ? ' including ' + s.dp + ' Nos DP set' : ''}`);
+  if (s.ou && s.ugLen) p.push(`${s.ugLen} Mtr 11 KV ${s.cable} XLPE underground cable with ${s.out} Nos outdoor termination kit${s.stj ? ` and ${s.stj} Nos straight through joint` : ''}${e.inp.ugToSS !== false ? ' into the sub-station' : ' (crossing)'}`);
   if (s.kva) p.push(`${s.kva} KVA ${s.ph === '1' ? '1-Phase' : '3-Phase'} distribution transformer sub-station on ${s.mount === 'D' ? 'double' : 'single'} pole structure${s.ssPoles ? ' (' + s.ssPoles + ' Nos PCC pole)' : ''}`);
   if (s.ltLen) p.push(`${s.ltLen} Mtr LT ${s.ltPh === '1' ? 'single' : 'three'} phase AB cable line${s.ltPoles ? ' on ' + s.ltPoles + ' Nos PCC poles' : ''}`);
   return p;
@@ -6238,8 +6289,9 @@ function sldSheetUI(e) {
         <button class="${x.mode === 'auto' ? 'on' : ''}${s.canDraw ? '' : ' off'}" data-act="sldmode" data-m="auto">Draw it for me</button>
         <button class="${x.mode === 'photo' ? 'on' : ''}" data-act="sldmode" data-m="photo">Photo of my sketch</button>
         <button class="${x.mode === 'blank' ? 'on' : ''}" data-act="sldmode" data-m="blank">Leave blank</button></div></div>
-    ${x.mode === 'photo' ? `<div class="sldpv">${photo ? `<img src="${photo}" alt="Hand-drawn SLD">` : '<span>Draw the SLD on a plain sheet with a dark pen and take a photo. The paper is cleaned up and it prints in the diagram space.</span>'}</div>
-      <div class="btnrow"><label class="btn btn-sm ${photo ? 'btn-quiet' : 'btn-ink'}">${photo ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" capture="environment" data-file="sldimg" hidden></label>
+    ${x.mode === 'photo' ? `<div class="sldpv">${photo ? `<img src="${photo}" alt="Hand-drawn SLD">` : '<span>Draw the SLD on a plain sheet with a dark pen and scan it with the camera — or upload a photo or scan already on the phone (JPG/PNG). The paper is cleaned up and it prints in the diagram space.</span>'}</div>
+      <div class="btnrow"><label class="btn btn-sm ${photo ? 'btn-quiet' : 'btn-ink'}">${photo ? 'Scan again' : 'Scan with camera'}<input type="file" accept="image/*" capture="environment" data-file="sldimg" hidden></label>
+        <label class="btn btn-sm btn-quiet">Upload from phone<input type="file" accept="image/*" data-file="sldimg" hidden></label>
         ${photo ? '<button class="btn btn-sm btn-danger" data-act="sldimgdel">Remove</button>' : ''}
         <label class="chk" style="margin:0"><input type="checkbox" data-act="sldscan"${x.scan !== false ? ' checked' : ''}><span>Clean the paper (white paper, dark lines)</span></label></div>`
       : x.mode === 'auto' && !s.canDraw ? '<p class="hint">This estimate has no line or S/S to draw from — use a photo or leave the space blank.</p>' : ''}
@@ -6888,12 +6940,12 @@ function tfrWork(e) {
   if (e.type === 'nc') {
     const L = ladderNC(e.rows, e.opt);
     add('Costing of LT line', L.lt.GT);
-    add(ug ? 'Costing of 11 KV U/G cable work' : 'Costing of 11 KV O/H line', L.ht.GT);
+    add(ug ? 'Costing of 11 KV U/G cable work' : i.htMode === 'OU' ? 'Costing of 11 KV O/H line and U/G cable work' : 'Costing of 11 KV O/H line', L.ht.GT);
     add(`Costing of S/S material${kva ? ' (' + kva + ' KVA ' + ph + ' T/F)' : ''}`, L.ss.GT);
   } else if (e.type === 'mip' || e.type === 'cm') {
     const L = ladderConn(e.rows, e.opt, e.type);
     add('Costing of LT line', L.lt.GT);
-    add(ug ? 'Costing of 11 KV U/G cable work' : 'Costing of 11 KV O/H line', L.ht.GT);
+    add(ug ? 'Costing of 11 KV U/G cable work' : i.htMode === 'OU' ? 'Costing of 11 KV O/H line and U/G cable work' : 'Costing of 11 KV O/H line', L.ht.GT);
     add(`Costing of S/S material${kva ? ' (' + kva + ' KVA ' + ph + ' T/F)' : ''}`, L.ss.GT);
     if (e.type === 'mip') { add('Costing of metering equipment provided by Nigam (LTTVM)', L.mn.GT); add('Metering equipment on supervision (MIP box & LT CT)', L.ma.GT); }
     else { add('Costing of metering equipment', L.mt.GT); if (L.fixed && L.fixed.total) add('Fixed charges', L.fixed.total); }
