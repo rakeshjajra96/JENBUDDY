@@ -890,7 +890,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '29.09.2026 13:00';
+const APP_VERSION = '29.09.2026 14:30';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -1292,7 +1292,8 @@ pgrabbit|PG Clamp for Rabbit|5015|NOS|64.40|
 |Poly Propylene Rope 12/18/28 mm|1848|KG|85.10|
 |Poly Propylene Rope 20 mm|1925|KG|111.04|
 # Other charges
-vermic|Vermiculite Charge (as per ACR)|ACR|MTR|356.69|
+vermic|Vermiculite Charge 11 KV cable (as per ACR)|ACR|MTR|335.39|
+vermic33|Vermiculite Charge 33 KV cable (as per ACR)|ACR|MTR|356.69|
 `;
 
 const UNIT_MAP = { KM: 'Mtr', MT: 'Kg', MTR: 'Mtr', NOS: 'Nos', SET: 'Set', KG: 'Kg', KL: 'KL', PAIRS: 'Pair', SQMTR: 'Sq.Mtr' };
@@ -2110,7 +2111,7 @@ function rowFromCat(cat, key) {
 }
 
 /* ---------- U/G CABLE on the HT side — his HT-connection cable sheet rules ----------
-   Cable taken = route + loop (30 Mtr unless changed). Vermiculite only on the route; labour 10% only on the loop cable + joints.
+   Rate: 11 KV cable Rs.335.39/Mtr (33 KV is 356.69 — not used here). Cable taken = route + loop (30 Mtr unless changed). Vermiculite only on the route; labour 10% only on the loop cable + joints.
    Estimates made before the loop box keep their old working: the length they hold already includes a 30 Mtr loop.
    Vermiculite and civil are mutually exclusive on the cable: if vermiculite is off, civil 10% is taken on the cable instead. */
 const UG_CABLE = /^c11_(185|120|300|70)$/;
@@ -3487,8 +3488,8 @@ function newEstimate(type) {
   if (['nc', 'sh', 'cm', 'mip', 'ht'].includes(type)) { e.inp.ugLoop = 30; e.opt.ugLoop = 30; if (e.opt.vermRate == null) e.opt.vermRate = vermDefault(); }
   return e;
 }
-/* vermiculite rate for a new estimate: the Rate list figure (ACR rate), else 356.69 */
-function vermDefault() { const it = App.cat && App.cat.byKey && App.cat.byKey.vermic; return (it && num(it.rate)) || 356.69; }
+/* vermiculite rate for a new estimate: every U/G cable in these estimates is 11 KV, so the 11 KV Rate list figure (ACR), else 335.39 */
+function vermDefault() { const it = App.cat && App.cat.byKey && App.cat.byKey.vermic; return (it && num(it.rate)) || 335.39; }
 function sisTitle(i) {
   const o = `${i.oldKVA} KVA ${i.oldPh}-Ph T/F`, n = `${i.newKVA} KVA ${i.newPh}-Ph T/F`;
   if (i.oldPh === i.newPh && +i.oldKVA === +i.newKVA) return `Estimate for Shifting of ${o} from ${i.oldMount === 'S' ? 'Single Pole' : 'Double Pole'} to ${i.newMount === 'S' ? 'Single Pole' : 'Double Pole'} S/S`;
@@ -3775,7 +3776,8 @@ function htBlock(e, sh) {
     ${fld(i.ugLoop == null ? 'Cable length incl. 30 Mtr loop (metre)' : 'Route length (metre)', 'inp.ugLen', i.ugLen, { n: 1, ph: 'e.g. 200' })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: i.ugLoop == null ? 'in the length' : '0' })}${fld('Outdoor CJK (Nos)', 'inp.ugOut', i.ugOut == null ? 2 : i.ugOut, { n: 1 })}
     ${fld('Indoor CJK (Nos)', 'inp.ugIn', i.ugIn, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
     ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + ((e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
-    ${chk(`Vermiculite @ Rs.${num(e.opt.vermRate) || 335.39}/Mtr on the route length, not on the loop (untick for civil 10% on cable instead)`, 'opt.verm', e.opt.verm !== false)}
+    ${chk('Vermiculite on the route length, not on the loop (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
+    ${e.opt.verm !== false ? `<div class="grid2">${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}<div></div></div>` : ''}
     <p class="hint">Cable taken = route + loop. Vermiculite on the route only; labour 10% on the loop cable plus joints; vermiculite and civil never both on the cable. Outdoor CJK on both ends of the cable. S/S termination discs are left out for a cable feed.</p>`;
   return `<div class="grid2">${mode}
     ${fld('Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${phase}
@@ -3816,7 +3818,7 @@ function cardHT(e) {
     ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
        <p class="hint">Poles, cross arms, pins, cut points, DP and conductor come from your span rule, like a new connection. The S/S set at the premises is added too.</p>`
     : mode === 'UG'
-    ? `<div class="grid2">${fld('11 KV U/G cable route from the tapping (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}</div>
+    ? `<div class="grid2">${fld('11 KV U/G cable route from the tapping (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}</div>
        <p class="hint">At the tapping on the existing line: 1 PCC pole, 1 cut point and 3 disc with H/W; 2 outdoor CJK for this cable. The loop is its own cable row over the route: vermiculite on the route only, labour 10% on the loop with the service cable and the joints.</p>`
     : `<p class="hint">Under the line — the fixed set: 2 poles, 2 V-cross, 6 pin insulators, 1 S/S structure, 3 earthing, 1 horn gap fuse set, 7 kg nut-bolt, 2 stay complete, and the jumper. Nothing else is added.</p>`;
   return `<div class="card"><div class="h3">Kind of HT work</div>
