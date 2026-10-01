@@ -857,6 +857,17 @@ html[data-theme="dark"] details.adv summary::after{border-color:#E8EEF4}
 html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 .lg-logo.lg-img{width:96px;height:96px;background:#fff;border:0;padding:0;overflow:hidden;border-radius:24px}
 .lg-logo.lg-img img{width:100%;height:100%;object-fit:contain}
+
+.rg-row{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border:1px solid var(--rule);border-radius:10px;background:#fff;margin-bottom:8px;cursor:pointer}
+.rg-row:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.rg-n{min-width:24px;font:700 13px/20px var(--fb);color:var(--muted)}
+.rg-m{flex:1;min-width:0}.rg-m b{display:block;font-weight:600;overflow-wrap:anywhere}.rg-m i{display:block;font-style:normal;color:var(--muted);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+.rg-s{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}.rg-s small{color:var(--muted);font-size:12px}
+.rg-pre{display:flex;align-items:center;gap:6px}.rg-pre b{font:700 14px var(--fb);color:var(--muted)}.rg-pre input{flex:1}
+.rg-fill{background:#FFF9E6 !important}
+.tl-b.rg-alarm{background:#C6392C;color:#fff}
+[data-theme="dark"] .rg-row{background:var(--sheet);border-color:var(--rule);color:var(--ink)}
+[data-theme="dark"] .rg-fill{background:#2F2A12 !important}
 </style>
 </head>
 <body class="booting">
@@ -890,7 +901,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '30.09.2026 12:00';
+const APP_VERSION = '01.10.2026 12:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -3144,7 +3155,7 @@ function drawSheet(pdf, spec, F, FB, black, drawSign, SIGN_H) {
   }
 
   let L = null;
-  for (let fs = 9; fs >= 5.5; fs -= 0.25) { L = layout(fs); if (L.total <= H - MT - MB) break; }
+  for (let fs = spec.fsMax || 9; fs >= (spec.fsMin || 5.5); fs -= 0.25) { L = layout(fs); if (L.total <= H - MT - MB) break; }
   const titleScale = L.fs / 8.5 < 1 ? Math.max(0.8, L.fs / 8.5) : 1;
 
   let page = pdf.addPage([W, H]); let y = H - MT;
@@ -3162,8 +3173,7 @@ function drawSheet(pdf, spec, F, FB, black, drawSign, SIGN_H) {
   });
   y -= 6;
   const xs = [MX]; cw.forEach((w, i) => xs.push(xs[i] + w));
-  L.placed.forEach((p, ri) => {
-    if (y - p.h < MB + (ri === L.placed.length - 1 ? SIGN_H : 0) && p.row.kind !== 'gap') { page = pdf.addPage([W, H]); y = H - MT; }
+  const drawRow = (p, ri) => {
     if (p.row.kind !== 'gap') {
       const bordered = p.row.kind !== 'sec';
       p.cells.forEach(x => {
@@ -3186,6 +3196,13 @@ function drawSheet(pdf, spec, F, FB, black, drawSign, SIGN_H) {
         for (let k = 0; k < ncol; k++) if (!occupied.has(k)) page.drawRectangle({ x: xs[k], y: y - p.h, width: cw[k], height: p.h, borderColor: black, borderWidth: 0.5 });
       }
     }
+  };
+  L.placed.forEach((p, ri) => {
+    if (y - p.h < MB + (ri === L.placed.length - 1 ? SIGN_H : 0) && p.row.kind !== 'gap') {
+      page = pdf.addPage([W, H]); y = H - MT;
+      if (spec.repeatHead && p.row.kind !== 'head') L.placed.forEach((q, qi) => { if (q.row.kind === 'head') { drawRow(q, qi); y -= q.h; } });
+    }
+    drawRow(p, ri);
     y -= p.h;
   });
   drawSign(page, spec.sign, MX, W - 2 * MX, MB);
@@ -3466,13 +3483,15 @@ function render() {
   if (!PROFILE.vr && App.view === 'vr') App.view = 'home';
   const tb = $('#tabTask'); if (tb) tb.hidden = !PROFILE.fi;
   const m = $('#main');
-  if (App.view === 'home') m.innerHTML = viewHome();
+  if (App.view === 'home') { m.innerHTML = viewHome(); setTimeout(rgHomeRefresh, 0); }
   else if (App.view === 'saved') { m.innerHTML = viewSaved(); renderSavedList(); }
   else if (App.view === 'rates') { m.innerHTML = viewRates(); renderRateList(); }
   else if (App.view === 'more') m.innerHTML = viewMore();
   else if (App.view === 'fi') { m.innerHTML = viewFI(); renderFIList(); }
   else if (App.view === 'vr') { m.innerHTML = viewVR(); renderVR(); }
   else if (App.view === 'lt') { m.innerHTML = viewLT(); renderLT(); }
+  else if (App.view === 'regs') { m.innerHTML = viewRegs(); rgRenderHome(); }
+  else if (App.view === 'reg') { m.innerHTML = viewReg(); rgRenderList(); }
   else if (App.view === 'tasks') { m.innerHTML = viewTasks(); renderTasks(); }
   else if (App.view === 'editor') renderEditor();
 }
@@ -3570,12 +3589,13 @@ function viewHome() {
       ${tile('data-act="gofiout"', I.rupee, 'Outstanding', outHint(), outBadge())}
 
       ${tile('data-act="fimsg" data-who="all"', I.chat, 'Message FIs', 'Group or one by one')}</div></section>` : ''}
+  <section class="blk" id="rgHome">${typeof rgHomeInner === 'function' ? rgHomeInner() : ''}</section>
   <section class="blk"><div class="blk-h"><h2>Office</h2></div>
     <div class="tiles">
       ${tile('data-act="apprbox"', I.stamp, isJEn() ? 'Approvals' : 'To sign', isJEn() ? (pend ? pend + ' with A.En.' : 'Send for sign') : 'Open a file from J.En.', isJEn() ? (pend || '') : '')}
       ${PROFILE.vr ? tile('data-go="vr"', I.wave, 'VR and TFR', 'Feeder VR, load study') : ''}
       ${tile('data-go="lt"', I.letter, 'Notices, letters', 'High risk, show cause, A.En. letters')}
-      ${tile('data-go="rates"', I.rate2, 'Rate list', SIR_LABEL)}
+      ${tile('data-go="rates"', I.rate2, 'Rate list', App.settings.sirLabel || SIR_LABEL)}
       ${tile('data-go="saved"', I.saved2, 'Record book', 'Every estimate, month-wise')}
       ${tile('data-go="more"', I.gear, 'Settings', 'Signs, backup, users')}</div></section>
   </div>`;
@@ -4152,7 +4172,8 @@ function pdfCard(e) {
     <div class="opts"><div><b>Site map page</b><p class="hint">Photo of your hand-drawn site map. It prints on a first page with the applicant details, before the estimate.</p></div>
     ${map ? `<img class="mapprev" src="${map}" alt="Site map preview"><div class="btnrow"><label class="btn btn-sm btn-quiet">Change photo<input type="file" accept="image/*" data-file="map" hidden></label><button class="btn btn-sm btn-danger" data-act="delmap">Remove</button></div>`
       : `<div class="btnrow" style="margin-top:0"><label class="btn btn-sm btn-ink">Add site map photo<input type="file" accept="image/*" data-file="map" hidden></label></div>`}
-    ${chk('Clean the photo like a scan (white paper, dark lines)', 'mapScan', e.mapScan !== false)}</div>`;
+    ${chk('Clean the photo like a scan (white paper, dark lines)', 'mapScan', e.mapScan !== false)}</div>
+    ${['nc', 'sh', 'cm', 'mip', 'ht'].includes(e.type) ? `<div class="btnrow" style="margin-top:10px"><button class="btn btn-quiet btn-sm" data-act="rg2sjo">Enter in SJO register</button></div>` : ''}`;
 }
 function refreshSplit() { const el = $('#splitBar'); if (el && App.est) el.innerHTML = App.est.built ? costSplit(App.est) : ''; }
 function refreshCalc(full) {
@@ -4520,7 +4541,7 @@ function viewMore() {
   return `<div class="wrap">
   <h1 class="h2">Settings and tools</h1><div class="hint" style="margin:-4px 0 10px">JenBuddy version ${APP_VERSION}</div>
   ${typeof cloudCard === 'function' ? cloudCard() : ''}
-  <div class="card"><div class="h3">Directory</div><div class="reg" style="margin:0"><button class="reg-row" data-go="fi"><span class="reg-ic">${I.fi}</span><span class="reg-t">Feeder in-charge list</span><span class="reg-d">Tap to call or WhatsApp</span></button></div></div>
+  <div class="card"><div class="h3">Directory</div><div class="reg" style="margin:0"><button class="reg-row" data-go="fi"><span class="reg-ic">${I.fi}</span><span class="reg-t">Feeder in-charge list</span><span class="reg-d">Tap to call or WhatsApp</span></button><button class="reg-row" data-go="regs"><span class="reg-ic">${I.saved2}</span><span class="reg-t">Office registers</span><span class="reg-d">Applications, SCO, SJO, indent, T/F burnt, DC, tripping, PTW, complaints, dak</span></button></div></div>
   <div class="card"><div class="h3">Signatures</div><p class="hint">Sign on plain white paper with a dark pen and take a photo. The background is removed automatically.</p>${sig('jen', 'J.En. (mine)')}${sig('aen', 'A.En.')}</div>
   <div class="card"><div class="h3">Printed on every estimate</div><div class="grid2">${sf('Office line', 'office')}${sf('X.En. signature label', 'xen')}${sf('A.En. signature label', 'aen')}${sf('J.En. signature label', 'jen')}${sf('Rate list line', 'sirLabel')}</div></div>
   <div class="card"><div class="h3">Quantity rules</div><p class="hint">Used when an estimate is built. Change only if your norm changes.</p><div class="grid3">
@@ -4548,6 +4569,7 @@ async function doBackup() {
     office: PROFILE.key, offices: (typeof OFF === 'object' ? OFF.list.filter(o => !o.built) : []),
     vr: (typeof VR === 'object' ? VR.list : null), tasks: (typeof U === 'object' ? U.tasks : []) };
   const inc = $('#bkSigns'); if (inc && inc.checked) data.signs = App.signs;
+  try { data.regs = await rgBackupData(); } catch (e) { }
   deliver(new TextEncoder().encode(JSON.stringify(data)), `JEn_Paota_backup_${fmtDate(new Date()).replace(/\./g, '-')}.json`, 'application/json', 'Backup');
 }
 async function restoreBackup(file) {
@@ -4558,6 +4580,7 @@ async function restoreBackup(file) {
   const byId = {}; App.estimates.forEach(e => byId[e.id] = e); (d.estimates || []).forEach(e => { if (!byId[e.id] || byId[e.id].updated < e.updated) byId[e.id] = e; });
   App.estimates = Object.values(byId); await Store.set('estimates', App.estimates);
   for (const [id, m] of Object.entries(d.maps || {})) { App.maps[id] = m; await Store.set('map:' + id, m); }
+  if (d.regs) { try { await rgRestoreData(d.regs); } catch (e) { } }
   if (d.settings) { App.settings = Object.assign(clone(DEFAULT_SETTINGS), d.settings); await Store.set('settings', App.settings); }
   if (d.overrides) { App.overrides = d.overrides; await Store.set('rates', App.overrides); }
   if (d.custom) { App.custom = d.custom; await Store.set('custom', App.custom); }
@@ -4598,7 +4621,7 @@ function renderFIList() {
 
 /* ---------- global events ---------- */
 function onClick(ev) {
-  const t = ev.target.closest('button, [data-go], [data-open], [data-new], .pick, [data-rate]'); if (!t) return;
+  const t = ev.target.closest('button, [data-go], [data-open], [data-new], .pick, [data-rate], .rg-row'); if (!t) return;
   if (t.tagName === 'INPUT') return;
   const d = t.dataset;
   if (d.go) { if (App.sheetOpen) closeSheet(); go(d.go); return; }
@@ -4621,6 +4644,7 @@ function onClick(ev) {
   if (d.act && typeof VR_ACTS === 'object' && VR_ACTS[d.act]) { VR_ACTS[d.act](t, d); return; }
   if (d.act && typeof LT_ACTS === 'object' && LT_ACTS[d.act]) { LT_ACTS[d.act](t, d); return; }
   if (d.act && typeof CL_ACTS === 'object' && CL_ACTS[d.act]) { CL_ACTS[d.act](t, d); return; }
+  if (d.act && typeof RG_ACTS === 'object' && RG_ACTS[d.act]) { RG_ACTS[d.act](t, d); return; }
   switch (d.act) {
     case 'back': history.back(); break;
     case 'tourgo': tourStart(); break;
@@ -7802,6 +7826,13 @@ async function clPull() {
     top = Math.max(top, num(r.updated_at));
     if (r.key === 'dataUid' || CL_LOCAL_ONLY.includes(r.key)) continue;           // belongs to the phone, not to the account
     const id = clId(r.office, r.key), mine = Math.abs(CL.meta[id] || 0);
+    if (/^reg:/.test(r.key) && !r.deleted && Array.isArray(r.value) && typeof rgMerge === 'function') {   // registers merge entry by entry
+      if (r.device === CL.cfg.device && mine >= num(r.updated_at)) continue;
+      const ahead = await clRaw(r.office, async () => { const cur = (await Store.get(r.key)) || []; const m = rgMerge(cur, r.value); await clOrigSet(r.key, m.list); return m.ahead; });
+      CL.meta[id] = ahead ? Date.now() : num(r.updated_at); if (ahead) { CL.dirty[id] = 1; CL._mergeAhead = true; }
+      if (typeof RG === 'object') RG.sum = null;
+      changed++; continue;
+    }
     if (r.device === CL.cfg.device && mine >= num(r.updated_at)) continue;      // my own write coming back
     if (mine > num(r.updated_at) && CL.dirty[id]) continue;                      // I changed it later here
     CL.meta[id] = r.deleted ? -num(r.updated_at) : num(r.updated_at);
@@ -7819,6 +7850,7 @@ async function clPull() {
     changed++;
   }
   CL.cfg.since = top; await clSave();
+  if (CL._mergeAhead) { CL._mergeAhead = false; clSoon(); }                   // merged register lists go back up
   if (rows.some(r => r.office === '_global' && r.key === 'offices') && typeof officeLoad === 'function') await officeLoad();
   if (typeof OFF === 'object') {                       // an office whose data came down is one this account uses
     const seen = new Set(rows.filter(r => r.office !== '_global' && !r.deleted).map(r => r.office)); let mark = false;
@@ -8120,6 +8152,544 @@ const CL_ACTS = {
     } catch (e) { toast('Could not check: ' + e.message); }
   }
 };
+
+
+/* ===================== OFFICE REGISTERS =====================
+   The paper registers of a J.En. (O&M) office, kept per office and per financial year (April–March), copied to the cloud.
+   Every entry carries its own id and update time, so two devices merge entry by entry: an entry added on one is never
+   lost when the other saves, and a delete travels as a marker. Ten registers come ready (taken from the Paota office's
+   own books); any of them can be switched off, its columns renamed, hidden or added to, and any J.En. can make a register
+   of his own. Only the J.En. makes entries. Headings print in English. */
+const RG_OPT = {
+  cat: ['DL', 'NDS', 'AG', 'SP', 'MP', 'LIP', 'PSL', 'PWW', 'Temporary', 'Other'],
+  make: ['Genus', 'HPL', 'Secure', 'L&T', 'Avon', 'Landis+Gyr', 'Other'],
+  phase: ['1-Ph', '3-Ph'],
+  kva: ['5', '10', '16', '25', '40', '63', '100', '160', '200', '250', '315', '400', '500'],
+  indcat: ['Maintenance', 'BTRO', 'SJO', 'SCO', 'Other'],
+  dcact: ['Disconnected', 'Paid, not cut', 'Reconnected after payment', 'House locked', 'Other'],
+  relay: ['O/C', 'E/F', 'O/C + E/F', 'Breakdown', 'Other'],
+  cause: ['Bird fault', 'Tree touching', 'Conductor snapped', 'Insulator failure', 'Jumper open', 'Rain / storm', 'Overload', 'Unknown'],
+  cmp: ['No supply', 'Low voltage', 'Line fault / wire down', 'Meter', 'Bill', 'Transformer', 'Street light', 'Other'],
+  dir: ['Inward', 'Outward']
+};
+/* column: [key, label, type, print width, required]
+   types: text, num, date, time, mobile, area, feeder, gss, village, appid, serial, status, sel:<list>,
+          dur:<from>:<to> (hours off, worked out), days:<from>:<to> (days taken, worked out) */
+const RG_T = [
+  { id: 'app', label: 'Applications', title: 'NEW CONNECTION APPLICATION REGISTER', ic: 'letter', sub: 'New connection applications',
+    date: 'appDate', main: 'name', line: ['appId', 'village', 'category'], st: { k: 'status', done: 'OK', pend: 'Pending' },
+    cols: [['appId', 'Application ID', 'appid', 12, 1], ['appDate', 'Date', 'date', 7], ['village', 'Village', 'village', 9], ['name', 'Applicant', 'text', 14, 1],
+      ['father', 'Father / husband', 'text', 11], ['mobile', 'Mobile', 'mobile', 8], ['category', 'Category', 'sel:cat', 6], ['load', 'Load', 'text', 5],
+      ['feeder', 'Feeder', 'feeder', 9], ['scoEst', 'SCO estimate', 'text', 11], ['sjoEst', 'SJO estimate', 'text', 14], ['status', 'Status', 'status', 6]] },
+  { id: 'sco', label: 'SCO register', title: 'SERVICE CONNECTION ORDER (SCO) REGISTER', ic: 'stamp', sub: 'Meter, A/c No., connection date',
+    date: 'scoDate', main: 'name', line: ['scoNo', 'accNo', 'feeder'], link: 1, st: { k: 'status', done: 'OK', pend: 'Pending', when: 'conDate' },
+    cols: [['scoNo', 'SCO No.', 'text', 7, 1], ['scoDate', 'SCO date', 'date', 7], ['appId', 'Application ID', 'appid', 11], ['name', 'Consumer', 'text', 13, 1],
+      ['father', 'Father / husband', 'text', 10], ['accNo', 'A/c No.', 'text', 8], ['meterNo', 'Meter No.', 'text', 9], ['make', 'Meter make', 'sel:make', 7],
+      ['reading', 'Reading', 'num', 5], ['phase', 'Phase', 'sel:phase', 4], ['category', 'Category', 'sel:cat', 5], ['load', 'Load', 'text', 5],
+      ['village', 'Village', 'village', 8], ['feeder', 'Feeder', 'feeder', 9], ['conDate', 'Connected on', 'date', 7], ['lineman', 'Lineman', 'text', 8], ['status', 'Status', 'status', 5]] },
+  { id: 'sjo', label: 'SJO register', title: 'SERVICE JOB ORDER (SJO) REGISTER', ic: 'nc', sub: 'Line and S/S work for connections',
+    date: 'sjoDate', main: 'name', line: ['sjoNo', 'work'], link: 1, st: { k: 'status', done: 'OK', pend: 'Pending', when: 'compDate' },
+    cols: [['sjoNo', 'SJO No.', 'text', 8, 1], ['sjoDate', 'SJO date', 'date', 7], ['appId', 'Application ID', 'appid', 11], ['name', 'Applicant', 'text', 13, 1],
+      ['father', 'Father / husband', 'text', 10], ['village', 'Village', 'village', 8], ['feeder', 'Feeder', 'feeder', 9], ['work', 'Work', 'area', 22],
+      ['estAmt', 'Estimate (Rs.)', 'num', 8], ['contractor', 'Contractor', 'text', 9], ['compDate', 'Completed on', 'date', 7], ['remarks', 'Remarks', 'text', 9], ['status', 'Status', 'status', 5]] },
+  { id: 'indent', label: 'Indent register', title: 'INDENT REGISTER', ic: 'ma', sub: 'Material indents',
+    date: 'indentDate', main: 'name', line: ['indentNo', 'category', 'material'], link: 1,
+    cols: [['indentNo', 'Indent No.', 'text', 7, 1], ['indentDate', 'Date', 'date', 7], ['category', 'Category', 'sel:indcat', 8], ['appId', 'Application No.', 'appid', 11],
+      ['accNo', 'A/c No.', 'text', 8], ['name', 'Name and address', 'text', 16, 1], ['jobNo', 'SJO / Job No.', 'text', 8], ['scoNo', 'SCO No.', 'text', 7],
+      ['contractor', 'Contractor', 'text', 9], ['material', 'Material', 'area', 22], ['remarks', 'Remarks', 'text', 8]] },
+  { id: 'tfb', label: 'T/F burnt', title: 'TRANSFORMER BURNT AND REPLACEMENT (BTRO) REGISTER', ic: 'sis', sub: 'Burnt and replaced transformers',
+    date: 'burntDate', main: 'place', line: ['kva', 'feeder', 'village'], st: { k: 'status', done: 'Replaced', pend: 'Not replaced', when: 'replDate', alarm: 1 },
+    cols: [['burntDate', 'Burnt on', 'date', 7, 1], ['place', 'Location / consumer', 'text', 13, 1], ['accNo', 'A/c No.', 'text', 7], ['load', 'Load', 'text', 5],
+      ['feeder', 'Feeder', 'feeder', 9], ['village', 'Village', 'village', 8], ['kva', 'KVA', 'sel:kva', 4], ['phase', 'Phase', 'sel:phase', 4],
+      ['oldSr', 'Old T/F Sr. No.', 'text', 8], ['oldTn', 'Old TN No.', 'text', 6], ['btroNo', 'BTRO / B. No.', 'text', 7], ['newSr', 'New T/F Sr. No.', 'text', 8],
+      ['newTn', 'New TN No.', 'text', 6], ['newKva', 'New KVA', 'sel:kva', 4], ['replDate', 'Replaced on', 'date', 7], ['days', 'Days', 'days:burntDate:replDate', 4],
+      ['fi', 'FI', 'text', 8], ['remarks', 'Remarks', 'text', 8], ['status', 'Status', 'status', 6]] },
+  { id: 'dc', label: 'DC register', title: 'DISCONNECTION (DC) REGISTER', ic: 'rupee', sub: 'Disconnections for dues',
+    date: 'dcDate', main: 'name', line: ['accNo', 'amount', 'action'],
+    cols: [['dcDate', 'Date', 'date', 7, 1], ['accNo', 'K.No. / A/c No.', 'text', 9, 1], ['category', 'Category', 'sel:cat', 5], ['name', 'Consumer', 'text', 14],
+      ['village', 'Village', 'village', 8], ['feeder', 'Feeder', 'feeder', 9], ['amount', 'Outstanding (Rs.)', 'num', 8], ['meterNo', 'Meter No.', 'text', 8],
+      ['make', 'Meter make', 'sel:make', 6], ['reading', 'Reading', 'num', 6], ['action', 'Action', 'sel:dcact', 10], ['lineman', 'Lineman', 'text', 8], ['remarks', 'Remarks', 'text', 9]] },
+  { id: 'trip', label: 'Tripping', title: 'FEEDER TRIPPING AND BREAKDOWN REGISTER', ic: 'wave', sub: 'Trips, breakdowns, hours off',
+    date: 'tripDate', main: 'feeder', line: ['gss', 'relay', 'cause'], st: { k: 'status', done: 'Restored', pend: 'Off', when: 'to' },
+    cols: [['tripDate', 'Date', 'date', 7, 1], ['gss', 'GSS', 'gss', 8], ['feeder', 'Feeder', 'feeder', 10, 1], ['from', 'Off at', 'time', 5], ['to', 'On at', 'time', 5],
+      ['dur', 'Off for', 'dur:from:to', 5], ['relay', 'Relay / type', 'sel:relay', 7], ['cause', 'Cause', 'sel:cause', 10], ['section', 'Section / location', 'text', 11],
+      ['action', 'Action taken', 'text', 13], ['fi', 'FI', 'text', 8], ['status', 'Status', 'status', 6]] },
+  { id: 'ptw', label: 'Shutdown / PTW', title: 'SHUTDOWN AND PERMIT TO WORK (PTW) REGISTER', ic: 'ht', sub: 'Open PTWs show in red',
+    date: 'ptwDate', main: 'feeder', line: ['ptwNo', 'work', 'takenBy'], st: { k: 'status', done: 'Returned', pend: 'Open', when: 'to', alarm: 1 },
+    cols: [['ptwNo', 'PTW No.', 'text', 6], ['ptwDate', 'Date', 'date', 7, 1], ['gss', 'GSS', 'gss', 8], ['feeder', 'Feeder', 'feeder', 9, 1], ['section', 'Section', 'text', 10],
+      ['work', 'Work', 'text', 14], ['issuedBy', 'Issued by (GSS)', 'text', 9], ['takenBy', 'Taken by', 'text', 9], ['from', 'Taken at', 'time', 5], ['to', 'Returned at', 'time', 5],
+      ['dur', 'Duration', 'dur:from:to', 5], ['remarks', 'Remarks', 'text', 8], ['status', 'Status', 'status', 6]] },
+  { id: 'cmp', label: 'Complaints', title: 'CONSUMER COMPLAINT REGISTER', ic: 'chat', sub: 'Pending ones on top',
+    date: 'cmpDate', main: 'name', line: ['kind', 'village', 'feeder'], st: { k: 'status', done: 'OK', pend: 'Pending', when: 'attDate' },
+    cols: [['cmpDate', 'Date', 'date', 7, 1], ['time', 'Time', 'time', 5], ['name', 'Consumer', 'text', 12, 1], ['accNo', 'K.No.', 'text', 8], ['mobile', 'Mobile', 'mobile', 8],
+      ['village', 'Village', 'village', 8], ['feeder', 'Feeder', 'feeder', 9], ['kind', 'Complaint', 'sel:cmp', 9], ['detail', 'Details', 'text', 13],
+      ['fi', 'Sent to (FI)', 'text', 8], ['attDate', 'Attended on', 'date', 7], ['action', 'Action taken', 'text', 11], ['status', 'Status', 'status', 5]] },
+  { id: 'dak', label: 'Dak', title: 'DAK REGISTER (INWARD / OUTWARD)', ic: 'saved2', sub: 'Letters in and out',
+    date: 'dakDate', main: 'subject', line: ['dir', 'serial', 'party'], serial: 'dir',
+    cols: [['dir', 'In / Out', 'sel:dir', 6, 1], ['serial', 'S. No.', 'serial', 5], ['dakDate', 'Date', 'date', 7, 1], ['letterNo', 'Letter No.', 'text', 10],
+      ['letterDate', 'Letter date', 'date', 7], ['party', 'From / To', 'text', 13], ['subject', 'Subject', 'text', 20, 1], ['fileNo', 'File No.', 'text', 7],
+      ['replyDate', 'Reply on', 'date', 7], ['remarks', 'Remarks', 'text', 9]] }
+];
+const RG = { id: null, fy: null, f: { q: '', feeder: '', st: 'all' }, sum: null, hq: '' };
+
+/* ---------- small helpers ---------- */
+function rgFY(iso) {
+  const d = iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? new Date(iso.slice(0, 10) + 'T00:00:00') : new Date();
+  const s = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+  return s + '-' + String((s + 1) % 100).padStart(2, '0');
+}
+function rgFYprev(fy) { const s = parseInt(fy, 10) - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); }
+function rgDt(iso) { if (!iso) return ''; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? `${m[3]}.${m[2]}.${m[1].slice(2)}` : String(iso); }
+function rgNewId() { return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function rgMins(a, b) {
+  const p = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+  const x = p(a), y = p(b); if (x == null || y == null) return null; let d = y - x; if (d < 0) d += 1440; return d;
+}
+function rgHM(m) { return m == null ? '' : Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); }
+function rgDays(a, b) { if (!a || !b) return null; const d = (new Date(b) - new Date(a)) / 86400000; return isFinite(d) ? Math.round(d) : null; }
+async function rgCfg() { return (await Store.get('regcfg')) || {}; }
+async function rgCfgSave(c) { await Store.set('regcfg', c); }
+function rgSd(cfg) {
+  if (cfg && cfg.sdCode != null) return String(cfg.sdCode);
+  try { if (seedOk()) return PROFILE.key === 'paota' ? '2117210' : PROFILE.key === 'nareda' ? '2117230' : ''; } catch (e) { }
+  return '';
+}
+function rgDefs(cfg) {
+  const on = (cfg && cfg.on) || {};
+  return RG_T.concat((cfg && cfg.custom) || []).filter(d => on[d.id] !== false);
+}
+function rgDef(cfg, id) { return RG_T.concat((cfg && cfg.custom) || []).find(d => d.id === id); }
+function rgCols(def, cfg) {
+  const o = (cfg && cfg.cols && cfg.cols[def.id]) || {}, hide = o.hide || [], ren = o.ren || {};
+  const base = def.cols.map(([k, l, t, w, req]) => ({ k, l: ren[k] || l, t, w: w || 8, req: !!req }));
+  (o.add || []).forEach(c => base.splice(base.findIndex(x => x.t === 'status') >= 0 ? base.findIndex(x => x.t === 'status') : base.length, 0, { k: c.k, l: c.l, t: c.t || 'text', w: c.w || 9, req: false }));
+  return base.filter(c => !hide.includes(c.k) || c.req);
+}
+function rgDone(def, e) {
+  if (!def.st) return null;
+  const v = e[def.st.k]; if (v === 'done') return true; if (v === 'pend') return false;
+  return def.st.when ? !!e[def.st.when] : false;
+}
+function rgVal(c, e, sd) {
+  const [t, a, b] = c.t.split(':');
+  if (t === 'dur') return rgHM(rgMins(e[a], e[b]));
+  if (t === 'days') { const d = rgDays(e[a], e[b]); return d == null ? '' : String(d); }
+  if (t === 'date') return rgDt(e[c.k]);
+  if (t === 'status') return '';
+  if (t === 'num') return e[c.k] === '' || e[c.k] == null ? '' : String(e[c.k]);
+  return e[c.k] == null ? '' : String(e[c.k]);
+}
+/* entry lists (with delete markers) */
+async function rgLoad(id, fy) { return (await Store.get(`reg:${id}:${fy}`)) || []; }
+async function rgLive(id, fy) { return (await rgLoad(id, fy)).filter(e => e && !e.del); }
+function rgMerge(a, b) {
+  const by = new Map(); let ahead = false;
+  (b || []).forEach(e => { if (e && e.id) by.set(e.id, e); });
+  (a || []).forEach(e => { if (!e || !e.id) return; const o = by.get(e.id); if (!o || num(e.u) > num(o.u)) { by.set(e.id, e); ahead = true; } });
+  return { list: [...by.values()].sort((x, y) => num(x.c) - num(y.c)), ahead };
+}
+async function rgPut(def, e, oldFy) {
+  const fy = rgFY(e[def.date] || (e.c ? new Date(e.c).toISOString() : ''));
+  const list = await rgLoad(def.id, fy), i = list.findIndex(x => x.id === e.id);
+  if (i >= 0) list[i] = e; else list.push(e);
+  await Store.set(`reg:${def.id}:${fy}`, list);
+  if (oldFy && oldFy !== fy) {                         // the date moved it into another year: leave a marker behind
+    const old = await rgLoad(def.id, oldFy), j = old.findIndex(x => x.id === e.id);
+    if (j >= 0) { old[j] = { id: e.id, c: e.c, u: Date.now(), del: 1 }; await Store.set(`reg:${def.id}:${oldFy}`, old); }
+  }
+  const cfg = await rgCfg(); cfg.fys = cfg.fys || {}; const f = cfg.fys[def.id] || [];
+  if (!f.includes(fy)) { cfg.fys[def.id] = f.concat(fy).sort(); await rgCfgSave(cfg); }
+  RG.sum = null;
+  return fy;
+}
+/* everything kept for this office (for search, linking and backup) */
+async function rgAll(cfg, ids) {
+  const out = []; const fys = new Set([rgFY(), rgFYprev(rgFY())]);
+  Object.values((cfg && cfg.fys) || {}).forEach(a => a.forEach(f => fys.add(f)));
+  for (const d of rgDefs(cfg)) {
+    if (ids && !ids.includes(d.id)) continue;
+    for (const fy of fys) (await rgLive(d.id, fy)).forEach(e => out.push({ d, fy, e }));
+  }
+  return out;
+}
+
+/* ---------- registers home ---------- */
+function viewRegs() {
+  return `<div class="edbar"><div class="edbar-in"><button class="back" data-act="back" aria-label="Back">${I.back}</button><div class="edtitle">Office registers<small>${esc(PROFILE.bar || '')} · FY ${rgFY()}</small></div></div></div>
+  <div class="wrap"><input class="srch" id="rgq" type="search" placeholder="Search every register: name, K.No., A/c, ID, mobile, SCO / SJO No." value="${esc(RG.hq)}" aria-label="Search every register">
+    <div id="rgHits"></div>
+    <div class="tiles" id="rgTiles"><p class="empty">Opening the registers…</p></div>
+    <div class="btnrow" style="margin-top:14px"><button class="btn btn-ink btn-sm" data-act="rgmonth">Monthly report</button>
+      <button class="btn btn-quiet btn-sm" data-act="rgmanage">Choose registers, columns, sub-division code</button></div>
+    <p class="hint" style="margin-top:10px">Each register runs by financial year (April–March) and is kept for this office only, on this phone and in your cloud. SCO, SJO and indent numbers are typed as the department gives them.</p></div>`;
+}
+async function rgRenderHome() {
+  const cfg = await rgCfg(), fy = rgFY(), box = $('#rgTiles'); if (!box) return;
+  const sum = await rgSummary(cfg);
+  box.innerHTML = rgDefs(cfg).map(d => {
+    const s = sum[d.id] || { n: 0, pend: 0 };
+    const badge = d.st && s.pend ? `<i class="tl-b${d.st.alarm ? ' rg-alarm' : ''}">${s.pend}</i>` : '';
+    return `<button class="tile" data-act="rgopen" data-id="${d.id}"><span class="tl-ic">${I[d.ic] || I.saved2}</span>${badge}<b>${esc(d.label)}</b><small>${s.n} in ${fy}${d.st && s.pend ? ` · ${s.pend} ${esc(d.st.pend.toLowerCase())}` : ''}</small></button>`;
+  }).join('') || '<p class="empty">Every register is switched off. Turn some on from "Choose registers".</p>';
+  const q = $('#rgq'); if (q && !q._rg) { q._rg = 1; q.addEventListener('input', () => { RG.hq = q.value; clearTimeout(q._t); q._t = setTimeout(rgSearchAll, 250); }); }
+  if (RG.hq) rgSearchAll();
+}
+async function rgSummary(cfg) {
+  if (RG.sum && RG.sumOffice === PROFILE.key) return RG.sum;
+  cfg = cfg || await rgCfg(); const fy = rgFY(), out = {};
+  for (const d of rgDefs(cfg)) {
+    const cur = await rgLive(d.id, fy), prev = d.st ? await rgLive(d.id, rgFYprev(fy)) : [];
+    out[d.id] = { n: cur.length, pend: d.st ? cur.concat(prev).filter(e => !rgDone(d, e)).length : 0 };
+  }
+  RG.sum = out; RG.sumOffice = PROFILE.key; return out;
+}
+async function rgSearchAll() {
+  const box = $('#rgHits'); if (!box) return; const q = RG.hq.trim().toLowerCase();
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  const cfg = await rgCfg(), all = await rgAll(cfg);
+  const hits = all.filter(x => JSON.stringify(x.e).toLowerCase().includes(q)).slice(0, 40);
+  box.innerHTML = hits.length ? `<div class="h3" style="margin:4px 0 8px">${hits.length === 40 ? 'First 40 matches' : hits.length + ' found'}</div>` + hits.map(x => rgRow(x.d, x.e, '', cfg, x.fy, true)).join('')
+    : '<p class="empty">Nothing found in any register.</p>';
+}
+
+/* ---------- one register ---------- */
+function viewReg() {
+  return `<div class="edbar"><div class="edbar-in"><button class="back" data-act="back" aria-label="Back">${I.back}</button><div class="edtitle" id="rgTitle">Register<small>${esc(PROFILE.bar || '')}</small></div></div></div>
+  <div class="wrap"><button class="btn btn-volt" data-act="rgnew" style="width:100%;margin-bottom:12px">Add entry</button><div id="rgHead"></div><div id="rgList"><p class="empty">Opening…</p></div></div>`;
+}
+async function rgRenderList() {
+  const cfg = await rgCfg(), def = rgDef(cfg, RG.id); if (!def) { go('regs'); return; }
+  RG.fy = RG.fy || rgFY();
+  const fy = RG.fy, sd = rgSd(cfg), cols = rgCols(def, cfg);
+  let list = (await rgLive(def.id, fy)).map((e, i) => ({ e, n: i + 1, fy }));
+  if (def.st && RG.f.st === 'pend' && fy === rgFY()) (await rgLive(def.id, rgFYprev(fy))).forEach((e, i) => list.push({ e, n: i + 1, fy: rgFYprev(fy) }));   // still pending from last year
+  const t = $('#rgTitle'); if (t) t.innerHTML = `${esc(def.label)}<small>${esc(PROFILE.bar || '')} · FY ${fy}</small>`;
+  const fyOpts = [...new Set([rgFY(), rgFYprev(rgFY()), ...(((cfg.fys || {})[def.id]) || [])])].sort().reverse();
+  const feeders = {}; if (cols.some(c => c.t === 'feeder')) list.forEach(x => { const f = (x.e.feeder || '').trim() || '(no feeder)'; feeders[f] = (feeders[f] || 0) + 1; });
+  const chip = (attr, on, txt) => `<button class="chip" ${attr} aria-pressed="${on}">${txt}</button>`;
+  $('#rgHead').innerHTML = `<div class="grid2" style="margin-bottom:8px"><label class="f"><span>Financial year</span><select id="rgFy">${fyOpts.map(f => `<option${f === fy ? ' selected' : ''}>${f}</option>`).join('')}</select></label>
+      <div class="f"><span>${list.length} entr${list.length === 1 ? 'y' : 'ies'}</span><div class="btnrow" style="margin:0"><button class="btn btn-quiet btn-sm" data-act="rgpdf">PDF</button><button class="btn btn-quiet btn-sm" data-act="rgxls">Excel</button><button class="btn btn-quiet btn-sm" data-act="rgcols">Columns</button></div></div></div>
+    <input class="srch" id="rgfq" type="search" placeholder="Search this register" value="${esc(RG.f.q)}" aria-label="Search this register">
+    ${def.st ? `<div class="chips">${chip('data-act="rgst" data-v="all"', RG.f.st === 'all', 'All')}${chip('data-act="rgst" data-v="pend"', RG.f.st === 'pend', esc(def.st.pend) + (RG.f.st === 'pend' ? '' : ''))}${chip('data-act="rgst" data-v="done"', RG.f.st === 'done', esc(def.st.done))}</div>` : ''}
+    ${Object.keys(feeders).length > 1 ? `<div class="h4" style="margin:10px 0 6px">Feeder-wise index</div><div class="chips">${chip('data-act="rgfd" data-v=""', !RG.f.feeder, 'All feeders')}${Object.keys(feeders).sort().map(f => chip(`data-act="rgfd" data-v="${esc(f)}"`, RG.f.feeder === f, `${esc(f)} <b>${feeders[f]}</b>`)).join('')}</div>` : ''}`;
+  const sel = $('#rgFy'); if (sel) sel.onchange = () => { RG.fy = sel.value; rgRenderList(); };
+  const fq = $('#rgfq'); if (fq) fq.addEventListener('input', () => { RG.f.q = fq.value; clearTimeout(fq._t); fq._t = setTimeout(rgDrawRows, 200); });
+  RG._list = list; RG._def = def; RG._cfg = cfg; RG._sd = sd;
+  rgDrawRows();
+}
+function rgFilter(def, list) {
+  const q = RG.f.q.trim().toLowerCase();
+  return list.filter(x => (!RG.f.feeder || ((x.e.feeder || '').trim() || '(no feeder)') === RG.f.feeder)
+    && (RG.f.st === 'all' || !def.st || (RG.f.st === 'done') === rgDone(def, x.e))
+    && (!q || JSON.stringify(x.e).toLowerCase().includes(q)));
+}
+function rgDrawRows() {
+  const def = RG._def, box = $('#rgList'); if (!def || !box) return;
+  const rows = rgFilter(def, RG._list || []).slice().sort((a, b) => (b.e[def.date] || '').localeCompare(a.e[def.date] || '') || num(b.e.c) - num(a.e.c));
+  box.innerHTML = rows.length ? rows.map(x => rgRow(def, x.e, x.n, RG._cfg, x.fy)).join('')
+    : `<p class="empty">${(RG._list || []).length ? 'Nothing matches.' : 'No entry in this year yet. Tap Add entry.'}</p>`;
+}
+function rgRow(def, e, n, cfg, fy, showReg) {
+  const cols = rgCols(def, cfg), byK = {}; cols.forEach(c => { byK[c.k] = c; });
+  const main = e[def.main] || (def.main === 'feeder' ? '' : '') || '(no name)';
+  const bits = def.line.map(k => byK[k] ? rgVal(byK[k], e) : (e[k] || '')).filter(Boolean);
+  if (def.id === 'trip' || def.id === 'ptw') { const d = rgMins(e.from, e.to); if (d != null) bits.push('off ' + rgHM(d)); }
+  if (def.id === 'tfb' && e.burntDate) { const d = rgDays(e.burntDate, e.replDate || todayISO()); if (d != null) bits.push(e.replDate ? `replaced in ${d} days` : `${d} days without T/F`); }
+  const done = rgDone(def, e);
+  const tag = def.st ? `<span class="st ${done ? 'approved' : def.st.alarm ? 'returned' : 'sent'}">${esc(done ? def.st.done : def.st.pend)}</span>` : '';
+  return `<div class="rg-row" role="button" tabindex="0" data-act="rgedit" data-id="${def.id}" data-eid="${e.id}" data-fy="${fy}">
+    <span class="rg-n">${showReg ? '' : n}</span><span class="rg-m"><b>${esc(main)}</b><i>${esc(bits.join(' · '))}</i>${showReg ? `<i>${esc(def.label)} · FY ${fy}</i>` : ''}</span>
+    <span class="rg-s"><small>${esc(rgDt(e[def.date]))}</small>${tag}</span></div>`;
+}
+
+/* ---------- entry form ---------- */
+function rgField(c, v, sd) {
+  const t = c.t.split(':')[0], lab = esc(c.l) + (c.req ? ' *' : ''), val = esc(v == null ? '' : v);
+  if (t === 'dur' || t === 'days') return '';
+  if (t === 'area') return `<label class="f span2"><span>${lab}</span><textarea class="ta" data-rk="${c.k}" rows="2">${val}</textarea></label>`;
+  if (t === 'status') return '';
+  if (t === 'appid') {
+    const tail = sd && String(v || '').startsWith(sd) ? String(v).slice(sd.length) : (v || '');
+    return `<label class="f"><span>${lab}</span><span class="rg-pre">${sd ? `<b>${esc(sd)}</b>` : ''}<input data-rk="${c.k}" data-appid="1" inputmode="numeric" value="${esc(tail)}" placeholder="${sd ? 'running no.' : 'full ID'}"></span></label>`;
+  }
+  const type = t === 'date' ? 'date' : t === 'time' ? 'time' : t === 'mobile' ? 'tel' : 'text';
+  const extra = t === 'num' || t === 'serial' ? ' inputmode="decimal"' : t === 'mobile' ? ' maxlength="10" inputmode="numeric"' : '';
+  const list = t === 'feeder' ? ' list="dl-feeder"' : t === 'gss' ? ' list="dl-gss"' : t === 'village' ? ' list="rgdl-vill"' : t === 'sel' ? ` list="rgdl-${c.t.split(':')[1]}"` : '';
+  return `<label class="f"><span>${lab}</span><input data-rk="${c.k}" type="${type}"${extra}${list} value="${val}" autocomplete="off"></label>`;
+}
+async function rgOpenForm(id, eid, fy, preset) {
+  const cfg = await rgCfg(), def = rgDef(cfg, id); if (!def) return;
+  const sd = rgSd(cfg), cols = rgCols(def, cfg);
+  let e = null;
+  if (eid) e = (await rgLive(id, fy)).find(x => x.id === eid);
+  const isNew = !e;
+  if (!e) {
+    e = Object.assign({}, preset || {});
+    if (!e[def.date] && cols.some(c => c.k === def.date)) e[def.date] = todayISO();
+    if (def.id === 'cmp' && !e.time) { const d = new Date(); e.time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+    if (def.id === 'dak' && !e.dir) e.dir = 'Inward';
+  }
+  const all = await rgAll(cfg), vills = new Set(); all.forEach(x => { if (x.e.village) vills.add(x.e.village); });
+  (App.estimates || []).forEach(x => { if (x.head && x.head.locality) vills.add(x.head.locality); });
+  const lists = Object.keys(RG_OPT).map(k => `<datalist id="rgdl-${k}">${RG_OPT[k].map(o => `<option value="${esc(o)}">`).join('')}</datalist>`).join('')
+    + `<datalist id="rgdl-vill">${[...vills].sort().map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+  const st = def.st ? `<label class="f span2"><span>Status</span><select data-rk="${def.st.k}">
+      <option value=""${!e[def.st.k] ? ' selected' : ''}>${def.st.when ? `Auto — ${esc(def.st.done)} when "${esc((cols.find(c => c.k === def.st.when) || {}).l || def.st.when)}" is filled` : esc(def.st.pend)}</option>
+      <option value="pend"${e[def.st.k] === 'pend' ? ' selected' : ''}>${esc(def.st.pend)}</option><option value="done"${e[def.st.k] === 'done' ? ' selected' : ''}>${esc(def.st.done)}</option></select></label>` : '';
+  let links = '';
+  if (!isNew && def.id === 'app' && e.appId) {                // one application, its whole journey
+    const rel = all.filter(x => x.d.id !== 'app' && x.e.appId && x.e.appId === e.appId);
+    if (rel.length) links = `<div class="h4" style="margin:12px 0 6px">This application in other registers</div>` + rel.map(x => rgRow(x.d, x.e, '', cfg, x.fy, true)).join('');
+  }
+  const wa = def.id === 'cmp' ? `<button class="btn btn-quiet btn-sm" data-act="rgwa">Send to FI on WhatsApp</button>` : '';
+  openSheet(`${lists}<div id="rgForm" data-reg="${def.id}" data-eid="${isNew ? '' : e.id}" data-fy="${isNew ? '' : fy}" data-c="${e.c || ''}">
+    <div class="grid2">${cols.map(c => rgField(c, e[c.k], sd)).join('')}${st}</div>
+    ${def.link ? '<p class="hint">Type the application ID and the name, village, mobile, category, load and feeder come from the application register.</p>' : ''}
+    ${def.id === 'dc' || def.id === 'cmp' ? '<p class="hint">Type the K.No. and the name, village, feeder and dues come from your outstanding list, if it is there.</p>' : ''}
+    <p class="hint">Type names in English letters so they print in the PDF; the Excel keeps any language.</p>
+    <div class="btnrow"><button class="btn btn-volt" data-act="rgsave">Save</button>${wa}${isNew ? '' : '<button class="btn btn-danger btn-sm" data-act="rgdel">Delete</button>'}<button class="btn btn-quiet" data-act="closesheet">Cancel</button></div>${links}</div>`,
+    (isNew ? 'New entry — ' : '') + def.label, 'wide');
+  const form = $('#rgForm');
+  if (form) form.addEventListener('change', ev => { const k = ev.target && ev.target.dataset && ev.target.dataset.rk; if (k) rgLookup(def, k, form, cfg, all); });
+}
+function rgFormVals(form, sd) {
+  const v = {};
+  form.querySelectorAll('[data-rk]').forEach(x => {
+    let s = (x.value || '').trim();
+    if (x.dataset.appid && s) { s = s.replace(/\s+/g, ''); if (sd && s.length < 13 && /^\d+$/.test(s)) s = sd + s.padStart(6, '0'); }
+    v[x.dataset.rk] = s;
+  });
+  return v;
+}
+function rgSetEmpty(form, k, val) { const x = form.querySelector(`[data-rk="${k}"]`); if (x && !x.value && val != null && val !== '') { x.value = val; x.classList.add('rg-fill'); } }
+async function rgLookup(def, k, form, cfg, all) {
+  const sd = rgSd(cfg), v = rgFormVals(form, sd);
+  if (k === 'appId' && v.appId && def.id !== 'app') {
+    const a = all.find(x => x.d.id === 'app' && x.e.appId === v.appId);
+    if (a) { ['name', 'father', 'village', 'mobile', 'category', 'load', 'feeder'].forEach(f => rgSetEmpty(form, f, a.e[f])); toast('Filled from the application register'); }
+  }
+  if (k === 'feeder' && v.feeder && typeof FI === 'object') {
+    const f = String(v.feeder).toLowerCase();
+    (FI.dir || []).forEach(g => (g.feeders || []).forEach(x => { if (String(x.name || '').toLowerCase() === f) { rgSetEmpty(form, 'fi', x.fi); rgSetEmpty(form, 'gss', g.gss); } }));
+  }
+  if (k === 'accNo' && v.accNo && typeof FI === 'object' && FI.out && FI.out.groups) {
+    let hit = null; Object.values(FI.out.groups).forEach(g => (g.cases || []).forEach(c => { if (String(c.kno) === String(v.accNo)) hit = { c, f: g.f }; }));
+    if (hit) {
+      rgSetEmpty(form, 'name', hit.c.name); rgSetEmpty(form, 'village', hit.c.vill); rgSetEmpty(form, 'category', hit.c.cat);
+      rgSetEmpty(form, 'feeder', (hit.f && hit.f.name) || hit.c.feeder); if (def.id === 'dc') rgSetEmpty(form, 'amount', hit.c.amt);
+      toast('Filled from the outstanding list');
+    }
+  }
+}
+
+/* ---------- exports ---------- */
+function rgSpec(def, cfg, rows, fy, wise, note) {
+  const cols = rgCols(def, cfg).filter(c => c.t !== 'status' || def.st);
+  const spec = { type: 'reg', orient: 'L', fsMin: 6, repeatHead: true,
+    titles: [{ t: App.settings.office, size: 12.5, b: true, al: 'c' }, { t: def.title || def.label.toUpperCase(), size: 11, b: true, al: 'c' },
+      { l: `Financial year ${fy}${note ? ' · ' + note : ''} · ${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`, r: 'Dated: ' + fmtDate(new Date()), size: 9 }],
+    cols: [{ w: 3.5 }].concat(cols.map(c => ({ w: c.w }))), rows: [], sign: [{ role: 'jen', label: App.settings.jen }] };
+  spec.rows.push({ kind: 'head', cells: [S('S.No')].concat(cols.map(c => S(c.l))) });
+  const cell = (c, e) => {
+    if (c.t === 'status') { const d = rgDone(def, e); return S(d ? def.st.done : def.st.pend, { al: 'c' }); }
+    const t = c.t.split(':')[0], v = rgVal(c, e);
+    if (t === 'num' && v !== '' && isFinite(+v)) return Nn(+v, c.k === 'amount' || c.k === 'estAmt' ? 'amt' : null, null, {});
+    return S(v, { al: ['date', 'time', 'dur', 'days', 'sel', 'serial', 'mobile'].includes(t) ? 'c' : 'l', wrap: ['area', 'text', 'village', 'feeder'].includes(t) });
+  };
+  const put = (list) => list.forEach((x, i) => spec.rows.push({ kind: 'item', cells: [S(String(i + 1), { al: 'c' })].concat(cols.map(c => cell(c, x.e))) }));
+  if (wise) {
+    const g = {}; rows.forEach(x => { const f = (x.e.feeder || '').trim() || '(no feeder)'; (g[f] = g[f] || []).push(x); });
+    Object.keys(g).sort().forEach(f => { spec.rows.push({ kind: 'sec', cells: [S(`Feeder: ${f}  (${g[f].length})`, { cs: cols.length + 1, b: true, al: 'l' })] }); put(g[f]); });
+  } else put(rows);
+  return spec;
+}
+async function rgExport(asPdf, wise) {
+  const def = RG._def, cfg = RG._cfg; if (!def) return;
+  const rows = rgFilter(def, RG._list || []).slice().sort((a, b) => (a.e[def.date] || '').localeCompare(b.e[def.date] || '') || num(a.e.c) - num(b.e.c));
+  if (!rows.length) { toast('Nothing to print with these filters'); return; }
+  const note = [RG.f.feeder ? 'Feeder ' + RG.f.feeder : '', RG.f.st !== 'all' && def.st ? (RG.f.st === 'done' ? def.st.done : def.st.pend) : '', RG.f.q ? 'search "' + RG.f.q + '"' : ''].filter(Boolean).join(' · ');
+  const spec = rgSpec(def, cfg, rows, RG.fy, wise && !RG.f.feeder, note);
+  const base = `${def.label.replace(/[^A-Za-z0-9]+/g, '_')}_${RG.fy}`;
+  if (asPdf) {
+    if (!window.PDFLib) { toast('PDF library did not load. Reopen the app.'); return; }
+    deliver(await buildPdf(spec, { signOn: { jen: !!App.signs.jen }, signImgs: App.signs, docTitle: def.label }), base + '.pdf', 'application/pdf', def.label);
+  } else deliver(buildXlsx(spec, def.label), base + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', def.label);
+}
+
+/* ---------- monthly report ---------- */
+async function rgMonthData(ym) {
+  const cfg = await rgCfg(), defs = rgDefs(cfg), all = await rgAll(cfg), inM = iso => (iso || '').slice(0, 7) === ym;
+  const by = id => all.filter(x => x.d.id === id).map(x => x.e), on = id => defs.some(d => d.id === id), L = [];
+  const pend = id => { const d = defs.find(x => x.id === id); return by(id).filter(e => !rgDone(d, e)).length; };
+  if (on('app')) L.push(['Applications', `${by('app').filter(e => inM(e.appDate)).length} received · ${pend('app')} pending in all`]);
+  if (on('sco')) L.push(['SCO', `${by('sco').filter(e => inM(e.scoDate)).length} issued · ${by('sco').filter(e => inM(e.conDate)).length} connections given · ${pend('sco')} pending`]);
+  if (on('sjo')) L.push(['SJO', `${by('sjo').filter(e => inM(e.sjoDate)).length} issued · ${by('sjo').filter(e => inM(e.compDate)).length} completed · ${pend('sjo')} pending`]);
+  if (on('indent')) { const m = by('indent').filter(e => inM(e.indentDate)), c = {}; m.forEach(e => { const k = e.category || 'Other'; c[k] = (c[k] || 0) + 1; });
+    L.push(['Indents', `${m.length}${m.length ? ' (' + Object.keys(c).map(k => k + ' ' + c[k]).join(', ') + ')' : ''}`]); }
+  if (on('tfb')) { const b = by('tfb'), r = b.filter(e => inM(e.replDate)), dd = r.map(e => rgDays(e.burntDate, e.replDate)).filter(x => x != null);
+    L.push(['Transformers', `${b.filter(e => inM(e.burntDate)).length} burnt · ${r.length} replaced${dd.length ? ' (average ' + (dd.reduce((s, x) => s + x, 0) / dd.length).toFixed(1) + ' days)' : ''} · ${b.filter(e => !e.replDate).length} still not replaced`]); }
+  if (on('dc')) { const m = by('dc').filter(e => inM(e.dcDate)); L.push(['Disconnections', `${m.length} done · dues ${fmtRs(m.reduce((s, e) => s + num(e.amount), 0))} · ${m.filter(e => /paid|reconnect/i.test(e.action || '')).length} paid`]); }
+  if (on('trip')) { const m = by('trip').filter(e => inM(e.tripDate)), mins = m.reduce((s, e) => s + (rgMins(e.from, e.to) || 0), 0), f = {};
+    m.forEach(e => { if (e.feeder) f[e.feeder] = (f[e.feeder] || 0) + 1; }); const top = Object.keys(f).sort((a, b) => f[b] - f[a])[0];
+    L.push(['Tripping', `${m.length} trips · ${rgHM(mins)} hours off${top ? ' · most on ' + top + ' (' + f[top] + ')' : ''}`]); }
+  if (on('ptw')) L.push(['PTW', `${by('ptw').filter(e => inM(e.ptwDate)).length} issued · ${pend('ptw')} open now`]);
+  if (on('cmp')) L.push(['Complaints', `${by('cmp').filter(e => inM(e.cmpDate)).length} received · ${by('cmp').filter(e => inM(e.attDate)).length} attended · ${pend('cmp')} pending`]);
+  if (on('dak')) { const m = by('dak').filter(e => inM(e.dakDate)); L.push(['Dak', `${m.filter(e => e.dir !== 'Outward').length} inward · ${m.filter(e => e.dir === 'Outward').length} outward`]); }
+  (cfg.custom || []).filter(d => defs.includes(d)).forEach(d => L.push([d.label, `${by(d.id).filter(e => inM(e[d.date])).length} entries`]));
+  return L;
+}
+function rgMonthName(ym) { const M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']; return M[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4); }
+async function rgMonthUI(ym) {
+  ym = ym || todayISO().slice(0, 7); RG.ym = ym;
+  const L = await rgMonthData(ym);
+  openSheet(`<div class="grid2"><label class="f"><span>Month</span><input type="month" id="rgYm" value="${ym}"></label><div></div></div>
+    <div class="list" style="margin:10px 0">${L.map(([a, b]) => `<div class="lrow"><div class="lmain"><b>${esc(a)}</b><small>${esc(b)}</small></div></div>`).join('') || '<p class="empty">No register is switched on.</p>'}</div>
+    <div class="btnrow"><a class="btn btn-volt" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`${PROFILE.bar} — registers, ${rgMonthName(ym)}\n\n` + L.map(([a, b]) => `*${a}:* ${b}`).join('\n'))}">Share on WhatsApp</a>
+      <button class="btn btn-ink" data-act="rgmonthpdf">PDF</button><button class="btn btn-quiet" data-act="closesheet">Close</button></div>`, 'Monthly report');
+  const y = $('#rgYm'); if (y) y.onchange = () => rgMonthUI(y.value);
+}
+async function rgMonthPdf() {
+  const ym = RG.ym || todayISO().slice(0, 7), L = await rgMonthData(ym);
+  const spec = { type: 'reg', orient: 'P', titles: [{ t: App.settings.office, size: 12.5, b: true, al: 'c' }, { t: 'MONTHLY POSITION OF OFFICE REGISTERS', size: 11, b: true, al: 'c' },
+    { l: rgMonthName(ym), r: 'Dated: ' + fmtDate(new Date()), size: 9 }], cols: [{ w: 5 }, { w: 22 }, { w: 60 }], rows: [], sign: [{ role: 'jen', label: App.settings.jen }] };
+  spec.rows.push({ kind: 'head', cells: [S('S.No'), S('Register'), S('Position')] });
+  L.forEach(([a, b], i) => spec.rows.push({ kind: 'item', cells: [S(String(i + 1), { al: 'c' }), S(a, { b: true }), S(b, { wrap: true })] }));
+  if (!window.PDFLib) { toast('PDF library did not load. Reopen the app.'); return; }
+  deliver(await buildPdf(spec, { signOn: { jen: !!App.signs.jen }, signImgs: App.signs, docTitle: 'Monthly position' }), `Registers_${ym}.pdf`, 'application/pdf', 'Monthly report');
+}
+
+/* ---------- choose registers, columns, own register ---------- */
+async function rgManageUI() {
+  const cfg = await rgCfg(), on = cfg.on || {};
+  openSheet(`<div class="grid2"><label class="f"><span>Sub-division code (fixed part of every application ID)</span><input id="rgSd" inputmode="numeric" value="${esc(rgSd(cfg))}" placeholder="e.g. 2117210"></label><div></div></div>
+    <div class="h4" style="margin:12px 0 6px">Registers this office keeps</div>
+    ${RG_T.concat(cfg.custom || []).map(d => `<label class="chk"><input type="checkbox" data-rgon="${d.id}"${on[d.id] !== false ? ' checked' : ''}><span><b>${esc(d.label)}</b> — ${esc(d.sub || 'my own register')}</span></label>`).join('')}
+    <div class="h4" style="margin:14px 0 6px">Make my own register</div>
+    <div class="grid2"><label class="f span2"><span>Register name</span><input id="rgNewName" placeholder="e.g. Street light register"></label></div>
+    <p class="hint">It starts with Date, Particulars and Remarks; add your own columns from its Columns button.</p>
+    <div class="btnrow"><button class="btn btn-volt" data-act="rgmansave">Save</button><button class="btn btn-quiet" data-act="closesheet">Cancel</button></div>`, 'Office registers');
+}
+async function rgColsUI() {
+  const cfg = await rgCfg(), def = rgDef(cfg, RG.id); if (!def) return;
+  const o = (cfg.cols && cfg.cols[def.id]) || {}, hide = o.hide || [], ren = o.ren || {};
+  const all = def.cols.map(([k, l, t, w, req]) => ({ k, l, t, req })).concat((o.add || []).map(c => ({ k: c.k, l: c.l, t: c.t, add: 1 })));
+  openSheet(`<p class="hint">Untick a column to leave it out of the form and the print. Change a heading by typing over it. Required columns stay.</p>
+    ${all.map(c => `<div class="grid2" style="align-items:end;margin-bottom:4px"><label class="chk" style="margin:0"><input type="checkbox" data-rgshow="${c.k}"${hide.includes(c.k) && !c.req ? '' : ' checked'}${c.req ? ' disabled' : ''}><span>${esc(c.l)}${c.add ? ' (mine)' : ''}</span></label>
+      <label class="f" style="margin:0"><span>Heading</span><input data-rgren="${c.k}" value="${esc(ren[c.k] || (c.add ? c.l : ''))}" placeholder="${esc(c.l)}"></label></div>`).join('')}
+    <div class="h4" style="margin:12px 0 6px">Add a column</div>
+    <div class="grid2"><label class="f"><span>Heading</span><input id="rgAddL" placeholder="e.g. Pole No."></label>
+      <label class="f"><span>Kind</span><select id="rgAddT"><option value="text">Text</option><option value="num">Number</option><option value="date">Date</option><option value="time">Time</option><option value="mobile">Mobile</option><option value="feeder">Feeder</option><option value="village">Village</option><option value="area">Long text</option></select></label></div>
+    <div class="btnrow"><button class="btn btn-volt" data-act="rgcolsave">Save</button><button class="btn btn-quiet" data-act="closesheet">Cancel</button></div>`, 'Columns — ' + def.label);
+}
+
+/* ---------- actions ---------- */
+const RG_ACTS = {
+  rgopen: (t, d) => { RG.id = d.id; RG.fy = rgFY(); RG.f = { q: '', feeder: '', st: 'all' }; go('reg'); },
+  rgst: (t, d) => { RG.f.st = d.v; rgRenderList(); },
+  rgfd: (t, d) => { RG.f.feeder = d.v; rgRenderList(); },
+  rgnew: () => rgOpenForm(RG.id, null, null),
+  rgedit: (t, d) => rgOpenForm(d.id, d.eid, d.fy),
+  rgpdf: () => {
+    const def = RG._def; if (!def) return;
+    if (!rgCols(def, RG._cfg).some(c => c.t === 'feeder') || RG.f.feeder) { rgExport(true, false); return; }
+    openSheet(`<p style="font-size:16px;margin:4px 0 16px">Print feeder-wise — each feeder in its own block, like the register book — or all entries together by date?</p>
+      <div class="btnrow"><button class="btn btn-ink" data-act="rgpdfgo" data-w="1">Feeder-wise</button><button class="btn btn-quiet" data-act="rgpdfgo" data-w="0">All together</button></div>`, 'PDF');
+  },
+  rgpdfgo: (t, d) => { closeSheet(true); rgExport(true, d.w === '1'); },
+  rgxls: () => rgExport(false, false),
+  rgcols: () => rgColsUI(),
+  rgmanage: () => rgManageUI(),
+  rgmonth: () => rgMonthUI(),
+  rgmonthpdf: () => rgMonthPdf(),
+  rgsave: async () => {
+    const form = $('#rgForm'); if (!form) return;
+    const cfg = await rgCfg(), def = rgDef(cfg, form.dataset.reg); if (!def) return;
+    const sd = rgSd(cfg), v = rgFormVals(form, sd), cols = rgCols(def, cfg);
+    const miss = cols.filter(c => c.req && !v[c.k]); if (miss.length) { toast('Fill ' + miss.map(c => c.l).join(', ')); const x = form.querySelector(`[data-rk="${miss[0].k}"]`); if (x) x.focus(); return; }
+    if (v.mobile && !/^\d{10}$/.test(v.mobile.replace(/\D/g, '').slice(-10))) { toast('Mobile should be 10 digits'); return; }
+    const eid = form.dataset.eid, oldFy = form.dataset.fy || null;
+    let base = {};
+    if (eid) base = (await rgLive(def.id, oldFy)).find(x => x.id === eid) || {};
+    const e = Object.assign({}, base, v, { id: eid || rgNewId(), c: num(form.dataset.c) || base.c || Date.now(), u: Date.now() });
+    if (def.serial && cols.some(c => c.t === 'serial') && !e.serial) {      // dak: next number for the year, separately for inward and outward
+      const fy = rgFY(e[def.date]), same = (await rgLive(def.id, fy)).filter(x => x[def.serial] === e[def.serial]);
+      e.serial = String(same.reduce((m, x) => Math.max(m, num(x.serial)), 0) + 1);
+    }
+    await rgPut(def, e, oldFy);
+    closeSheet(true); toast('Saved');
+    if (App.view === 'reg') rgRenderList(); else if (App.view === 'regs') rgRenderHome(); else render();
+  },
+  rgdel: async () => {
+    const form = $('#rgForm'); if (!form || !form.dataset.eid) return;
+    if (!(await ask('Delete this entry from the register? It is removed on every device.', 'Delete', true))) return;
+    const id = form.dataset.reg, fy = form.dataset.fy, list = await rgLoad(id, fy), i = list.findIndex(x => x.id === form.dataset.eid);
+    if (i >= 0) { list[i] = { id: list[i].id, c: list[i].c, u: Date.now(), del: 1 }; await Store.set(`reg:${id}:${fy}`, list); }
+    RG.sum = null; closeSheet(true); toast('Deleted'); if (App.view === 'reg') rgRenderList();
+  },
+  rgwa: async () => {
+    const form = $('#rgForm'); if (!form) return; const v = rgFormVals(form, '');
+    let mob = ''; const f = String(v.feeder || '').toLowerCase();
+    (FI.dir || []).forEach(g => (g.feeders || []).forEach(x => { if (String(x.name || '').toLowerCase() === f && x.mob) mob = x.mob; }));
+    if (!mob) { toast('No FI mobile found for this feeder in the Feeder in-charge list'); return; }
+    const txt = `*Complaint* ${rgDt(v.cmpDate)} ${v.time || ''}\n${v.name || ''}${v.accNo ? ' (K.No. ' + v.accNo + ')' : ''}${v.mobile ? '\nMobile: ' + v.mobile : ''}\n${[v.village, v.feeder ? 'Feeder ' + v.feeder : ''].filter(Boolean).join(' · ')}\n${v.kind || ''}${v.detail ? ': ' + v.detail : ''}\n— ${PROFILE.bar}`;
+    window.open(waLink(mob, txt), '_blank');
+  },
+  rgmansave: async () => {
+    const cfg = await rgCfg(); cfg.on = cfg.on || {};
+    document.querySelectorAll('[data-rgon]').forEach(x => { cfg.on[x.dataset.rgon] = x.checked; });
+    const sd = ($('#rgSd') || {}).value; if (sd != null) cfg.sdCode = String(sd).replace(/\D/g, '');
+    const nm = (($('#rgNewName') || {}).value || '').trim();
+    if (nm) {
+      cfg.custom = cfg.custom || [];
+      const id = 'u' + Date.now().toString(36);
+      cfg.custom.push({ id, label: nm, title: nm.toUpperCase(), ic: 'saved2', sub: 'my own register', date: 'date', main: 'part', line: ['remarks'],
+        cols: [['date', 'Date', 'date', 8, 1], ['part', 'Particulars', 'text', 30, 1], ['remarks', 'Remarks', 'text', 14]] });
+    }
+    await rgCfgSave(cfg); RG.sum = null; closeSheet(true); toast(nm ? 'Register made — open it and add its columns' : 'Saved');
+    if (App.view === 'regs') rgRenderHome(); else render();
+  },
+  rgcolsave: async () => {
+    const cfg = await rgCfg(), def = rgDef(cfg, RG.id); if (!def) return;
+    cfg.cols = cfg.cols || {}; const o = cfg.cols[def.id] = cfg.cols[def.id] || {};
+    o.hide = [...document.querySelectorAll('[data-rgshow]')].filter(x => !x.checked).map(x => x.dataset.rgshow);
+    o.ren = {}; o.add = o.add || [];
+    document.querySelectorAll('[data-rgren]').forEach(x => { const k = x.dataset.rgren, v = x.value.trim(); const a = o.add.find(c => c.k === k); if (a) { if (v) a.l = v; } else if (v) o.ren[k] = v; });
+    const nl = (($('#rgAddL') || {}).value || '').trim();
+    if (nl) o.add.push({ k: 'x' + Date.now().toString(36), l: nl, t: ($('#rgAddT') || {}).value || 'text', w: 9 });
+    await rgCfgSave(cfg); closeSheet(true); toast('Columns saved'); rgRenderList();
+  },
+  rg2sjo: () => {                                      // an estimate goes into the SJO register with its work words
+    const e = App.est; if (!e) return; const h = e.head || {};
+    let work = ''; try { work = sldWork(e).join('; '); } catch (er) { work = h.title || ''; }
+    rgOpenForm('sjo', null, null, { name: h.applicant || '', village: h.locality || '', feeder: h.feeder || '', work: work.slice(0, 400), estAmt: String(Math.round(num(estTotal(e)))) });
+  }
+};
+
+/* ---------- home section, backup ---------- */
+function rgHomeInner() {
+  const tile = (attr, ic, t, s2, badge, alarm) => `<button class="tile" ${attr}><span class="tl-ic">${ic}</span>${badge ? `<i class="tl-b${alarm ? ' rg-alarm' : ''}">${badge}</i>` : ''}<b>${t}</b><small>${s2}</small></button>`;
+  const defs = RG.defsOffice === PROFILE.key ? (RG.defsCache || []) : [], s = (RG.sumOffice === PROFILE.key && RG.sum) || {};
+  const top = defs.map((d, i) => ({ d, i, p: (s[d.id] || {}).pend || 0 })).sort((a, b) => ((b.d.st && b.d.st.alarm && b.p) ? 1 : 0) - ((a.d.st && a.d.st.alarm && a.p) ? 1 : 0) || a.i - b.i).slice(0, 5);
+  return `<div class="blk-h"><h2>Office registers</h2><span>FY ${rgFY()}</span></div><div class="tiles">
+    ${top.map(({ d, p }) => tile(`data-act="rgopen" data-id="${d.id}"`, I[d.ic] || I.saved2, esc(d.label), d.st && p ? `${p} ${esc(d.st.pend.toLowerCase())}` : `${(s[d.id] || {}).n || 0} this year`, d.st && p ? p : '', d.st && d.st.alarm)).join('')}
+    ${tile('data-go="regs"', I.saved2, 'All registers', 'Search, monthly report', '')}</div>`;
+}
+async function rgHomeRefresh() {
+  try { const cfg = await rgCfg(); RG.defsCache = rgDefs(cfg); RG.defsOffice = PROFILE.key; await rgSummary(cfg); const el = $('#rgHome'); if (el) el.innerHTML = rgHomeInner(); } catch (e) { }
+}
+async function rgBackupData() {
+  const cfg = await rgCfg(), out = { cfg, data: {} };
+  for (const d of RG_T.concat(cfg.custom || [])) for (const fy of ((cfg.fys || {})[d.id] || [])) { const k = `reg:${d.id}:${fy}`, v = await Store.get(k); if (v && v.length) out.data[k] = v; }
+  return out;
+}
+async function rgRestoreData(r) {
+  if (!r || !r.data) return 0; let n = 0;
+  for (const [k, v] of Object.entries(r.data)) { if (!/^reg:/.test(k) || !Array.isArray(v)) continue; const m = rgMerge((await Store.get(k)) || [], v); await Store.set(k, m.list); n += v.length; }
+  const cfg = await rgCfg(), b = r.cfg || {};
+  cfg.fys = cfg.fys || {}; Object.entries(b.fys || {}).forEach(([id, a]) => { cfg.fys[id] = [...new Set((cfg.fys[id] || []).concat(a))].sort(); });
+  if (!cfg.custom && b.custom) cfg.custom = b.custom; if (!cfg.cols && b.cols) cfg.cols = b.cols; if (cfg.sdCode == null && b.sdCode != null) cfg.sdCode = b.sdCode; if (!cfg.on && b.on) cfg.on = b.on;
+  await rgCfgSave(cfg); RG.sum = null; return n;
+}
 
 </script>
 </body>
