@@ -901,7 +901,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '01.10.2026 12:00';
+const APP_VERSION = '01.10.2026 23:30';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -6198,7 +6198,8 @@ function sldInfo(e) {
     try { info = buildLineParts({ htDist: ug ? 0 : htLen, htPhase: ph, turns: i.turns, takeoff: i.takeoff, withSS: i.withSS !== false,
       tfKVA: kva, mount, ltDist: num(i.ltDist) || num(i.ltCable), ltPhase: i.ltPhase }, N).info; } catch (er) { info = {}; }
   }
-  return { ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
+  return { loop: i.ugLoop == null || i.ugLoop === '' ? null : num(i.ugLoop), ugTap: i.ugTap !== false, takeoff: i.takeoff || 'P', toSS: i.ugToSS !== false,
+    ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
     cable: i.ugSize === '120' ? '3C x 120 sqmm' : '3C x 185 sqmm', out: i.ugOut == null ? 2 : num(i.ugOut), stj: num(i.ugStj), inn: num(i.ugIn),
     ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen),
     poles: ht ? rowQty(e, 'pole9_200', 'ht', 2) : ug ? 0 : rowQty(e, 'pole9_200', 'ht', num(info.linePoles) + num(info.dp)), dp: num(info.dp),
@@ -6210,7 +6211,7 @@ function sldWork(e) {
   const s = sldInfo(e), p = [];
   if (e.type === 'sis') { p.push(`Replacement of the existing ${s.oldKVA} KVA ${s.oldPh === '1' ? '1-Phase' : '3-Phase'} distribution transformer with a ${s.kva} KVA ${s.ph === '1' ? '1-Phase' : '3-Phase'} transformer on ${s.mount === 'D' ? 'double' : 'single'} pole structure`); return p; }
   if (e.type === 'sh') { const d = e.inp || {};
-    if (num(d.dDist)) p.push(`Dismantling of ${num(d.dDist)} Mtr existing 11 KV line`);
+    if (num(d.dDist)) p.push(`Dismantling of ${num(d.dDist)} Mtr existing 11 KV line between the points where the new line takes off and joins back (A to B)`);
     if (s.htLen) p.push(s.ug ? `Laying of ${s.htLen} Mtr 11 KV ${s.cable} underground cable` : `Erection of ${s.htLen} Mtr 11 KV line on ${s.poles} Nos PCC poles at the new alignment`);
     if (s.ou && s.ugLen) p.push(`Laying of ${s.ugLen} Mtr 11 KV ${s.cable} underground cable with ${s.out} Nos outdoor termination kit`);
     if (!s.htLen && s.kva) p.push(`Re-erection of the ${s.kva} KVA sub-station structure`);
@@ -6319,6 +6320,11 @@ function sldSheetUI(e) {
         ${photo ? '<button class="btn btn-sm btn-danger" data-act="sldimgdel">Remove</button>' : ''}
         <label class="chk" style="margin:0"><input type="checkbox" data-act="sldscan"${x.scan !== false ? ' checked' : ''}><span>Clean the paper (white paper, dark lines)</span></label></div>`
       : x.mode === 'auto' && !s.canDraw ? '<p class="hint">This estimate has no line or S/S to draw from — use a photo or leave the space blank.</p>' : ''}
+    ${e.type === 'sh' && x.mode === 'auto' ? `<div class="f"><span>New route</span><div class="seg3">
+        <button class="${x.route !== 'V' ? 'on' : ''}" data-act="sldroute" data-r="U">Round the plot (3 sides)</button>
+        <button class="${x.route === 'V' ? 'on' : ''}" data-act="sldroute" data-r="V">One pole moved aside</button></div></div>
+      <div class="grid2">${fldv(x.route === 'V' ? 'Lengths of the 2 sides, metre (optional, e.g. 40, 45)' : 'Lengths of the 3 sides, metre (optional, e.g. 98, 183, 82)', 'sdSides', x.sides || '', 'span2')}</div>
+      <p class="hint">Drawn the way the estimate has it: overhead dotted with its poles at the bends and by the span, U/G as a coil with cut points. Proposed work in red, the existing line in black.</p>` : ''}
     <div class="btnrow"><button class="btn btn-volt" data-act="sldmake">Make PDF</button>
       <button class="btn btn-quiet" data-act="sldnotes">Edit the note sheet words</button>
       <button class="btn btn-quiet" data-act="closesheet">Cancel</button></div>`, 'SLD and note sheet');
@@ -6336,6 +6342,7 @@ function sldNotesUI() {
 function sldGrab() {
   const e = App.est, x = e.sld || (e.sld = {});
   if ($('#sdSub')) { x.subdiv = $('#sdSub').value; x.applied = $('#sdApp').value; x.loadKW = $('#sdKW').value; x.supply = $('#sdSup').value; x.reason = $('#sdWhy').value; }
+  if ($('#sdSides')) x.sides = $('#sdSides').value;
   if ($('#sdNotes')) x.notes = $('#sdNotes').value.split('\n').map(t => t.trim()).filter(Boolean);
   touch();
 }
@@ -6343,23 +6350,80 @@ function sldGrab() {
 /* ---------- the drawing ---------- */
 /* HT site map, drawn the way it is done by hand:
    the existing feeder coming down to the new DP set, then the equipment in a line up to the load */
+function pdfCoil(page, x1, y1, x2, y2, o) {
+  o = o || {}; const ink = PDFLib.rgb(0, 0, 0);
+  const L = Math.hypot(x2 - x1, y2 - y1); if (L < 2) return;
+  const ux = (x2 - x1) / L, uy = (y2 - y1) / L, px = -uy, py = ux;
+  const n = Math.max(1, Math.round(L / (o.pitch || 8))), r = L / (2 * Math.PI * n), e = r * (o.loop || 3), d = o.amp || 4.5;
+  const t0 = Math.PI / 2, a0 = r * t0 - e * Math.sin(t0), steps = n * 30;
+  let lx = x1, ly = y1;
+  for (let s = 1; s <= steps; s++) {
+    const t = t0 + s / steps * 2 * Math.PI * n, a = r * t - e * Math.sin(t) - a0, c = -d * Math.cos(t);
+    const X = x1 + ux * a + px * c, Y = y1 + uy * a + py * c;
+    page.drawLine({ start: { x: lx, y: ly }, end: { x: X, y: Y }, thickness: o.th || 0.95, color: o.color || ink }); lx = X; ly = Y;
+  }
+}
+const PDF_DOT = [1.3, 2.4];                            // a proposed overhead line prints dotted
 function htMap(page, F, FB, x0, y0, w, h, s, e) {
   const { rgb } = PDFLib, ink = rgb(0, 0, 0), volt = rgb(0.95, 0.72, 0.02);
   const i = e.inp || {};
-  const line = (a, b, c, d, t, dash) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t || 1, color: ink }, dash ? { dashArray: [3, 2] } : {}));
+  const red = rgb(0.80, 0.10, 0.08);                   // proposed work is drawn in red, as with a red pen
+  const line = (a, b, c, d, t, dash, col) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t || 1, color: col || ink }, dash ? { dashArray: PDF_DOT } : {}));
   const txt = (t, x, y, sz, f, al) => { const s2 = pdfSafe(t), ff = f || F, wd = ff.widthOfTextAtSize(s2, sz || 7.5);
     page.drawText(s2, { x: al === 'c' ? x - wd / 2 : al === 'r' ? x - wd : x, y, size: sz || 7.5, font: ff, color: ink }); };
-  const cross = (x, y, r) => { line(x - r, y - r, x + r, y + r); line(x - r, y + r, x + r, y - r); };
-  const feedX = x0 + 26, rowY = y0 + h * 0.44;
-  // existing feeder, coming down the left side
-  line(feedX, y0 + h - 14, feedX, rowY + 26, 1.4);
-  [0.22, 0.46, 0.70].forEach(f2 => cross(feedX, y0 + h - 14 - (y0 + h - 14 - (rowY + 26)) * f2, 4.5));
-  wrapText(pdfSafe('EXISTING 11 KV ' + (s.feeder || '') + ' FEEDER'), FB, 8, w - 60).slice(0, 2).forEach((ln, k) =>
-    txt(ln, feedX + 10, y0 + h - 16 - k * 10, 8, FB));
-  // the new DP set at the take-off
-  cross(feedX - 7, rowY + 20, 4.5); cross(feedX + 7, rowY + 20, 4.5);
-  txt('NEW DP SET', feedX, rowY + 4, 7.5, FB, 'c');
-  txt('(PIP)', feedX, rowY - 6, 7, F, 'c');
+  const cross = (x, y, r, col) => { line(x - r, y - r, x + r, y + r, 1, false, col); line(x - r, y + r, x + r, y - r, 1, false, col); };
+  const feedX = x0 + 30, rowY = y0 + Math.max(40, h * 0.32);
+  const feedY = y0 + h - 24, dpTop = rowY + 20;
+  const lm = i.lineMode || (num(i.htDist) > 0 ? 'OH' : 'UL');
+  const ohLen = (lm === 'OH' || lm === 'OU') ? num(i.htDist) : 0, ugLen = (lm === 'UG' || lm === 'OU') ? num(i.ugLine) : 0;
+  const cableName = (i.ugSize === '120' ? '3C X 120' : '3C X 185') + ' SQMM XLPE', loop = num(i.ugLoop), stj = num(i.ugStj);
+  let linePoles = 0, dpn = 0;
+  if (ohLen) { try { const inf = buildLineParts({ htDist: ohLen, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: 63, mount: 'D', withTF: false }, App.settings.norms).info; linePoles = num(inf.linePoles); dpn = num(inf.dp); } catch (er) { } }
+  // the existing 11 KV line along the top, as it runs past the site
+  const lineEnd = x0 + w * 0.68;
+  line(x0 + 6, feedY, lineEnd, feedY, 1.4);
+  [feedX + 70, feedX + 150, feedX + 230].filter(px => px < lineEnd - 10).forEach(px => cross(px, feedY, 4.5));
+  const ring = (x, y) => page.drawCircle({ x, y, size: 3.1, borderColor: ink, borderWidth: 0.9 });
+  const vCable = (ya, yb) => pdfCoil(page, feedX, ya, feedX, yb, { color: red });
+  const vLine = (ya, yb, np) => { line(feedX, ya, feedX, yb, 1.4, true, red); const m2 = Math.max(0, Math.min(np, 5)); for (let q = 1; q <= m2; q++) cross(feedX, ya - (ya - yb) * q / (m2 + 1), 4, red); };
+  const dim = (ya, yb, words) => {                    // a dimension line with arrows and the length written beside it
+    const dx = feedX + 15; line(dx, ya, dx, yb, 0.7);
+    line(dx - 2.5, ya - 4, dx, ya, 0.7); line(dx + 2.5, ya - 4, dx, ya, 0.7); line(dx - 2.5, yb + 4, dx, yb, 0.7); line(dx + 2.5, yb + 4, dx, yb, 0.7);
+    const ws = words.filter(Boolean), floor = Math.max(yb, rowY + 31), mid = Math.min(ya - 8, Math.max((ya + yb) / 2 + (ws.length - 1) * 4.5 - 3, floor + (ws.length - 1) * 9));
+    ws.forEach((t, k2) => txt(t, dx + 7, mid - k2 * 9, k2 ? 7 : 8.5, k2 ? F : FB));
+  };
+  const ringPole = (y) => { page.drawCircle({ x: feedX, y, size: 6.5, borderColor: red, borderWidth: 1.1 }); cross(feedX, y, 3.8, red); };
+  let tapWord = '';
+  if (lm === 'UL') {                                   // S/S right below the existing line: a jumper only
+    line(feedX, feedY, feedX, dpTop, 1.4, true, red);
+    const my = (feedY + dpTop) / 2;
+    txt('S/S UNDER THE EXISTING LINE', feedX + 12, my + 2, 8, FB); txt(`JUMPER ${num(i.jumper) || 15} MTR`, feedX + 12, my - 8, 7);
+  } else if (lm === 'UG') {                            // new purpose pole on the line, U/G cable down to the DP set
+    ringPole(feedY); tapWord = 'NEW PURPOSE POLE';
+    vCable(feedY - 6.5, dpTop);
+    dim(feedY - 9, dpTop, [`${ugLen || '___'} MTR U/G CABLE`, `11 KV ${cableName}`, loop ? `+ ${loop} MTR LOOP` : '', `2 NOS O/D TERMINATION KIT${stj ? ', ' + stj + ' NOS STJ' : ''}`]);
+  } else if (lm === 'OU') {                            // overhead first, then cable into the DP set
+    cross(feedX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
+    const f2 = ohLen + ugLen > 0 ? Math.min(0.5, Math.max(0.32, ohLen / (ohLen + ugLen))) : 0.45, midY = feedY - (feedY - dpTop) * f2;
+    vLine(feedY, midY + 6.5, linePoles);
+    ringPole(midY); txt('CUT POINT', feedX + 22, midY - 2.5, 6.5, FB);
+    vCable(midY - 6.5, dpTop);
+    dim(feedY - 6, midY + 6, [`${ohLen} MTR O/H LINE`, `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
+    dim(midY - 8, dpTop, [`${ugLen} MTR U/G CABLE`, `11 KV ${cableName}`, loop ? `+ ${loop} MTR LOOP` : '']);
+  } else {                                             // overhead line from the tapping
+    cross(feedX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
+    vLine(feedY, dpTop, linePoles);
+    dim(feedY - 6, dpTop, [`${ohLen || '___'} MTR O/H LINE`, '11 KV 3-PH', `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
+  }
+  if (tapWord) txt(tapWord, feedX + 9, feedY + 7, 7, FB);
+  const fl = pdfSafe('EXISTING 11 KV ' + (s.feeder || '') + ' FEEDER'), flx = feedX + (tapWord ? FB.widthOfTextAtSize(pdfSafe(tapWord), 7) + 26 : 14);
+  let fs2 = 8; while (fs2 > 6 && FB.widthOfTextAtSize(fl, fs2) > x0 + w - flx - 4) fs2 -= 0.25;
+  txt(fl, flx, feedY + 7, fs2, FB);
+  // the new DP set where the line / cable lands: a box with its two poles
+  page.drawRectangle({ x: feedX - 15, y: rowY + 4, width: 30, height: 16, borderColor: red, borderWidth: 1.2 });
+  cross(feedX - 7, rowY + 12, 4, red); cross(feedX + 7, rowY + 12, 4, red);
+  txt('NEW DP SET', feedX, rowY - 6, 7.5, FB, 'c');
+  txt('(PIP)', feedX, rowY - 15, 7, F, 'c');
   // the chain of equipment
   const boxes = [];
   if (i.mapRoom !== false) boxes.push(['METER', 'ROOM']);
@@ -6369,16 +6433,11 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
   if (i.mapDo !== false) boxes.push(['G.O. / D.O. SET', '']);
   boxes.push(['__TF__', '']);                          // drawn as the transformer symbol
   const loadW = 116;
-  const right = x0 + w - loadW, span = right - (feedX + 22);
-  const link = 20, bw = Math.max(46, (span - link * boxes.length) / boxes.length), bh = 32;
-  const cableRun = (x1, x2, y) => {                   // cable shown the usual way: rings on the run
-    line(x1, y, x2, y, 1.2);
-    const n = Math.max(2, Math.min(3, Math.floor((x2 - x1) / 9)));
-    const mid = (x1 + x2) / 2, sp = 7.5;
-    for (let q = 0; q < n; q++) page.drawCircle({ x: mid + (q - (n - 1) / 2) * sp, y, size: 3.1, borderColor: ink, borderWidth: 0.9 });
-  };
-  let x = feedX + 22;
-  cableRun(feedX, x, rowY + 12);
+  const right = x0 + w - loadW, span = right - (feedX + 15);
+  const link = 20, bw = Math.max(44, (span - link * (boxes.length + 1)) / boxes.length), bh = 32;
+  const cableRun = (x1, x2, y) => pdfCoil(page, x1, y, x2, y, { pitch: 8, amp: 4 });   // cable, the way it is sketched
+  let x = feedX + 15 + link;
+  cableRun(feedX + 15, x, rowY + 12);
   boxes.forEach((bx, k) => {
     page.drawRectangle({ x, y: rowY - bh / 2 + 12, width: bw, height: bh, borderColor: ink, borderWidth: 1.1 });
     if (bx[0] === '__TF__') {                          // two windings, the transformer symbol
@@ -6398,123 +6457,182 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
     x = to;
   });
   // the load at the end
-  const cxL = x + 12;
+  const cxL = x + 11;
   page.drawCircle({ x: cxL, y: rowY + 12, size: 11, borderColor: ink, borderWidth: 1.1, color: volt, opacity: 0.22 });
   txt('LOAD', cxL, rowY + 9, 6.8, FB, 'c');
   const ld = (e.head && e.head.load) || '';
   if (ld) wrapText(pdfSafe(ld), FB, 8, loadW - 26).slice(0, 3).forEach((ln, k) => txt(ln, cxL + 15, rowY + 14 - k * 9, 8, FB));
   const lgy = y0 + 12;                                 // small key, the way the hand sketch reads
-  line(x0 + 16, lgy, x0 + 44, lgy, 1.2);
-  page.drawCircle({ x: x0 + 30, y: lgy, size: 3.1, borderColor: ink, borderWidth: 0.9 });
-  txt('CABLE', x0 + 50, lgy - 3, 7);
-  cross(x0 + 96, lgy, 4); txt('POLE', x0 + 104, lgy - 3, 7);
+  pdfCoil(page, x0 + 14, lgy, x0 + 42, lgy, { pitch: 8, amp: 4, color: red }); txt('U/G CABLE', x0 + 54, lgy - 3, 7);
+  line(x0 + 112, lgy, x0 + 140, lgy, 1.4, true, red); txt('PROPOSED LINE', x0 + 145, lgy - 3, 7);
+  cross(x0 + 222, lgy, 4); txt('POLE', x0 + 230, lgy - 3, 7);
+  page.drawCircle({ x: x0 + 270, y: lgy, size: 6, borderColor: red, borderWidth: 1 }); cross(x0 + 270, lgy, 3.5, red); txt('NEW PURPOSE POLE', x0 + 280, lgy - 3, 7);
+  txt('Red: proposed work.  Black: existing.', x0 + w, lgy - 3, 6.5, F, 'r');
 }
 /* Line shifting site map, the way his own sketches read:
    the premises drawn as a plot, the existing line crossing it marked for dismantling,
    and the new PIP route taken round the boundary, with the points lettered A, B, C. */
 function shiftMap(page, F, FB, x0, y0, w, h, s, e) {
-  const { rgb } = PDFLib, ink = rgb(0, 0, 0), red = rgb(0.72, 0.12, 0.1);
-  const i = e.inp || {}, dLen = num(i.dDist), nLen = num(i.htDist) || num(i.ugLen);
+  const { rgb } = PDFLib, ink = rgb(0, 0, 0), red = rgb(0.80, 0.10, 0.08);
+  const i = e.inp || {}, x = e.sld || {}, N = App.settings.norms || {};
+  const mode = i.htMode === 'UG' ? 'UG' : i.htMode === 'OU' ? 'OU' : 'OH';
+  const dLen = num(i.dDist), ohLen = mode === 'UG' ? 0 : num(i.htDist), ugLen = mode === 'OH' ? 0 : num(i.ugLen), nLen = ohLen + ugLen;
   const ph = i.htPhase === '1' ? '1-Ph' : '3-Ph', dph = i.dPhase === '1' ? '1-Ph' : '3-Ph';
-  const line = (a, b, c, d, t, dash, col) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t || 1, color: col || ink }, dash ? { dashArray: [4, 3] } : {}));
-  const txt = (t, x, y, sz, f, al, col) => { const s2 = pdfSafe(t), ff = f || F, wd = ff.widthOfTextAtSize(s2, sz || 7.5);
-    page.drawText(s2, { x: al === 'c' ? x - wd / 2 : al === 'r' ? x - wd : x, y, size: sz || 7.5, font: ff, color: col || ink }); };
-  const cross = (x, y, r, col) => { line(x - r, y - r, x + r, y + r, 1, false, col); line(x - r, y + r, x + r, y - r, 1, false, col); };
-  const mark = (x, y, t) => { page.drawCircle({ x, y, size: 7, borderColor: ink, borderWidth: 0.9 }); txt(t, x, y - 2.6, 7.5, FB, 'c'); };
+  const route = x.route === 'V' ? 'V' : 'U', span = num(N.span) || 50;
+  const sides = String(x.sides || '').split(/[^0-9.]+/).map(num).filter(v => v > 0);
+  const loopW = i.ugLoop == null || i.ugLoop === '' ? ' (incl. 30 Mtr loop)' : num(i.ugLoop) ? ` + ${num(i.ugLoop)} Mtr loop` : '';
+  const line = (a2, b2, c2, d2, t, dash, col) => page.drawLine(Object.assign({ start: { x: a2, y: b2 }, end: { x: c2, y: d2 }, thickness: t || 1, color: col || ink }, dash ? { dashArray: PDF_DOT } : {}));
+  const txt = (t, xx, yy, sz, f, al, col) => { const s2 = pdfSafe(t), ff = f || F, wd = ff.widthOfTextAtSize(s2, sz || 7.5);
+    page.drawText(s2, { x: al === 'c' ? xx - wd / 2 : al === 'r' ? xx - wd : xx, y: yy, size: sz || 7.5, font: ff, color: col || ink }); };
+  const cross = (xx, yy, r, col) => { line(xx - r, yy - r, xx + r, yy + r, 1, false, col); line(xx - r, yy + r, xx + r, yy - r, 1, false, col); };
+  const mark = (xx, yy, t) => { page.drawCircle({ x: xx, y: yy, size: 6.5, borderColor: ink, borderWidth: 0.9 }); txt(t, xx, yy - 2.6, 7.5, FB, 'c'); };
+  const cutBox = (xx, yy) => { page.drawRectangle({ x: xx - 6.5, y: yy - 6.5, width: 13, height: 13, borderColor: red, borderWidth: 1.1 }); cross(xx, yy, 4, red); };
+  const ringPole = (xx, yy) => { page.drawCircle({ x: xx, y: yy, size: 6.5, borderColor: red, borderWidth: 1.1 }); cross(xx, yy, 3.8, red); };
   // the applicant's premises
-  const px = x0 + w * 0.34, py = y0 + h * 0.20, pw = w * 0.44, phh = h * 0.46;
+  const V = route === 'V';                             // one pole moved aside: a smaller plot, the line bends round its top
+  const py = y0 + Math.max(58, h * (V ? 0.30 : 0.25)), phh = h * (V ? 0.28 : 0.40), pw = w * (V ? 0.22 : 0.40), px = x0 + w * (V ? 0.47 : 0.36);
   page.drawRectangle({ x: px, y: py, width: pw, height: phh, borderColor: ink, borderWidth: 1 });
-  txt("APPLICANT'S PREMISES", px + pw / 2, py + phh / 2, 8, FB, 'c');
-  // existing line straight across the premises — this is the stretch that comes out
-  const ey = py + phh * 0.72, ax = x0 + 20, bx = px + pw + 26;
-  line(ax, ey, bx, ey, 1.3);
-  for (let x = ax + 30; x < bx - 10; x += 34) cross(x, ey, 4);
-  const mx = (px + px + pw) / 2;
-  line(mx - 6, ey + 7, mx + 6, ey - 7, 1.2, false, red); line(mx + 4, ey + 7, mx + 16, ey - 7, 1.2, false, red);
-  txt(`DISMANTLE ${dLen || '___'} MTR ${dph}`, mx + 24, ey + 9, 7.5, FB, null, red);
-  mark(ax, ey, 'A'); mark(bx, ey, 'B');
-  // the new route taken round the boundary
-  const ny = py - 16, cx2 = bx;
-  line(ax, ey - 10, ax, ny, 1.2, true, red);
-  line(ax, ny, cx2, ny, 1.2, true, red);
-  line(cx2, ny, cx2, ey - 10, 1.2, true, red);
-  [0.25, 0.5, 0.75].forEach(f2 => cross(ax + (cx2 - ax) * f2, ny, 4, red));
-  cross(ax, ny + (ey - 10 - ny) * 0.5, 4, red);
-  txt(`NEW PIP ${nLen || '___'} MTR ${ph}`, (ax + cx2) / 2, ny - 12, 7.5, FB, 'c', red);
-  mark(cx2, ny, 'C');
-  // a transformer being shifted is shown at both places, the way you draw it
+  txt("APPLICANT'S PREMISES", px + pw / 2, py + phh * (V ? 0.22 : 0.38), V ? 7 : 8, FB, 'c');
+  // the existing line: in from the left, across the premises (A to B comes out), on to the right
+  const ey = py + phh * (V ? 0.55 : 0.74), ax = px - (V ? 58 : 34), bx = px + pw + (V ? 58 : 34), l0 = x0 + 10, l1 = Math.min(x0 + w - 8, bx + 64);
+  line(l0, ey, ax, ey, 1.4); line(bx, ey, l1, ey, 1.4); cross(l0 + 18, ey, 4); cross(l1 - 16, ey, 4);
+  line(ax, ey, bx, ey, 1.2);                           // A to B: the existing stretch that comes out
+  const nd = Math.max(1, Math.round((dLen || 2 * span) / span) - 1), ndS = Math.min(nd, 6);
+  for (let q = 1; q <= ndS; q++) cross(ax + (bx - ax) * q / (ndS + 1), ey, 4);
+  for (let xs = ax + 16; xs < bx - 12; xs += 26) {    // struck through along its whole length, from A right up to B
+    if (Math.abs(xs - ax) < 8 || Math.abs(xs - bx) < 8) continue;
+    line(xs - 3, ey + 6, xs + 3, ey - 6, 1.1, false, red); line(xs + 2, ey + 6, xs + 8, ey - 6, 1.1, false, red);
+  }
+  [ax + 8, bx - 8].forEach(xt => line(xt, ey - 9, xt, ey + 9, 1.2, false, red));   // where the dismantling starts and stops
+  txt(`DISMANTLE A TO B: ${dLen || '___'} MTR ${dph} LINE${nd ? ' (' + nd + ' POLE' + (nd > 1 ? 'S)' : ')') : ''}`, (ax + bx) / 2, V ? py - 12 : ey + 10, 7.5, FB, 'c', red);
+  cross(ax, ey, 5); cross(bx, ey, 5);
+  // the new route
+  const ny = py - 16, cxV = (ax + bx) / 2, vy = ey + phh * 0.95 + 14;   // high enough to clear the plot's corners     // U goes round below the plot; a moved pole goes outside its top edge
+  const pts = route === 'V' ? [[ax, ey], [cxV, vy], [bx, ey]] : [[ax, ey], [ax, ny], [bx, ny], [bx, ey]];
+  const segL = pts.slice(1).map((p, k) => Math.hypot(p[0] - pts[k][0], p[1] - pts[k][1])), L = segL.reduce((a2, b2) => a2 + b2, 0);
+  const at = f => { let d = Math.max(0, Math.min(1, f)) * L; for (let k = 0; k < segL.length; k++) { if (d <= segL[k] || k === segL.length - 1) { const t = segL[k] ? d / segL[k] : 0; return [pts[k][0] + (pts[k + 1][0] - pts[k][0]) * t, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * t]; } d -= segL[k]; } return pts[pts.length - 1]; };
+  const cum = [0]; segL.forEach(v => cum.push(cum[cum.length - 1] + v));
+  const slice = (f1, f2) => { const out = [at(f1)]; for (let k = 1; k < pts.length - 1; k++) { const f = cum[k] / L; if (f > f1 + 1e-6 && f < f2 - 1e-6) out.push(pts[k]); } out.push(at(f2)); return out; };
+  const fOH = mode === 'OH' ? 1 : mode === 'UG' ? 0 : (nLen ? Math.min(0.8, Math.max(0.2, ohLen / nLen)) : 0.5);
+  let np = 0;
+  if (ohLen) {                                          // overhead part: dotted red, poles at the bends and by the span
+    const p = slice(0, fOH);
+    for (let k = 0; k < p.length - 1; k++) line(p[k][0], p[k][1], p[k + 1][0], p[k + 1][1], 1.4, true, red);
+    try { np = num(buildLineParts({ htDist: ohLen, htPhase: i.htPhase, turns: i.turns, takeoff: 'P', withSS: false, withTF: false, fuse: false }, N).info.linePoles); } catch (er) { np = 0; }
+    np = Math.max(np || Math.ceil(ohLen / span) - 1, p.length - 2);
+    const bends = p.slice(1, -1), free = Math.max(0, Math.min(np, 12) - bends.length);
+    bends.forEach(c => cross(c[0], c[1], 4.5, red));
+    const lens = p.slice(1).map((q2, k) => Math.hypot(q2[0] - p[k][0], q2[1] - p[k][1])), T = lens.reduce((a2, b2) => a2 + b2, 0) || 1;
+    const raw = lens.map(l2 => free * l2 / T), cnt = raw.map(Math.floor); let left = free - cnt.reduce((a2, b2) => a2 + b2, 0);
+    raw.map((r2, k) => [r2 - cnt[k], k]).sort((u, v) => v[0] - u[0]).slice(0, left).forEach(([, k]) => cnt[k]++);
+    lens.forEach((l2, k) => { for (let q = 1; q <= cnt[k]; q++) { const t2 = q / (cnt[k] + 1); cross(p[k][0] + (p[k + 1][0] - p[k][0]) * t2, p[k][1] + (p[k + 1][1] - p[k][1]) * t2, 4, red); } });
+  }
+  if (ugLen) {                                          // U/G part: red coil, cut points where it leaves and meets the line
+    const p = slice(fOH, 1);
+    for (let k = 0; k < p.length - 1; k++) pdfCoil(page, p[k][0], p[k][1], p[k + 1][0], p[k + 1][1], { color: red, pitch: 9, amp: 3.6 });
+    if (mode === 'UG') cutBox(ax, ey); else { const c = at(fOH); ringPole(c[0], c[1]); }
+    cutBox(bx, ey);
+  }
+  mark(ax - 15, ey + 13, 'A'); mark(bx + 15, ey + 13, 'B');
+  if (route === 'V') { const c = pts[1]; mark(c[0] - 17, c[1] + 4, 'C'); }
+  // lengths: each side if given, the total always
+  if (sides.length === pts.length - 1) sides.forEach((v, k) => {
+    const m = [(pts[k][0] + pts[k + 1][0]) / 2, (pts[k][1] + pts[k + 1][1]) / 2], vert = Math.abs(pts[k][0] - pts[k + 1][0]) < 1;
+    if (V) txt(`${v} M`, m[0] + (k === 0 ? -8 : 8), m[1] + 6, 8, FB, k === 0 ? 'r' : 'l', red);
+    else if (vert) txt(`${v} M`, m[0] + (k === 0 ? -9 : 9), m[1] - 3, 8, FB, k === 0 ? 'r' : 'l', red); else txt(`${v} M`, m[0], m[1] - 13, 8, FB, 'c', red);
+  });
+  const words = [];
+  if (ohLen) words.push(`${ohLen} MTR 11 KV ${ph} O/H LINE, ${np} POLE${np === 1 ? '' : 'S'}`);
+  if (ugLen) words.push(`${ugLen} MTR 11 KV U/G CABLE${loopW.toUpperCase()}`);
+  if (!words.length) words.push('NEW PIP ___ MTR');
+  if (route === 'V') words.forEach((t, k) => txt(t, cxV + 14, vy + 2 - k * 10, 7.5, FB, 'l', red));
+  else words.forEach((t, k) => txt(t, (ax + bx) / 2, ny - (sides.length === pts.length - 1 ? 26 : 13) - k * 10, 7.5, FB, 'c', red));
+  // a transformer being shifted, shown at both places
   const nTF = num((e.opt || {}).tfShift);
   if (nTF > 0) {
     const kva = num(i.tfKVA), lab = (kva ? kva + ' KVA ' : '') + (i.mount === 'S' || i.htPhase === '1' ? '1-Ph' : '3-Ph');
     const tfBox = (bxc, byc, title, col) => {
-      const bw2 = 30, bh2 = 17;
-      page.drawRectangle({ x: bxc - bw2 / 2, y: byc - bh2 / 2, width: bw2, height: bh2, borderColor: col || ink, borderWidth: 1 });
+      page.drawRectangle({ x: bxc - 15, y: byc - 8.5, width: 30, height: 17, borderColor: col || ink, borderWidth: 1 });
       page.drawCircle({ x: bxc, y: byc + 3, size: 4.2, borderColor: col || ink, borderWidth: 0.9 });
       page.drawCircle({ x: bxc, y: byc - 3, size: 4.2, borderColor: col || ink, borderWidth: 0.9 });
-      txt(title, bxc, byc - bh2 / 2 - 9, 7, FB, 'c', col);
+      if (title) txt(title, bxc, byc + 12, 7, FB, 'c', col);
     };
-    tfBox(bx - 46, ey, 'EXISTING T/F');
-    tfBox(cx2 - 46, ny, 'SHIFTED T/F', red);
-    txt(lab, cx2 - 46, ny + 16, 7, F, 'c', red);
+    const ex = ax + (bx - ax) * (V ? 0.86 : 0.82);
+    tfBox(ex, ey - 24, ''); line(ex, ey - 15.5, ex, ey, 0.9); txt('EXISTING T/F', ex, ey - 42, 7, FB, 'c');
+    if (route === 'V') { const c = pts[1]; tfBox(c[0] - 52, c[1] + 4, '', red); line(c[0] - 37, c[1] + 4, c[0], c[1], 0.9, false, red); txt('SHIFTED T/F', c[0] - 52, c[1] + 16, 7, FB, 'c', red); txt(lab, c[0] - 52, c[1] + 25, 6.5, F, 'c', red); }
+    else { const yy = (ey + ny) / 2; tfBox(bx + 30, yy, '', red); line(bx, yy, bx + 15, yy, 0.9, false, red); txt('SHIFTED T/F', bx + 30, yy + 12, 7, FB, 'c', red); txt(lab, bx + 30, yy - 18, 6.5, F, 'c', red); }
   }
-  // what the work adds up to, as he writes it beside the sketch
-  let ry = y0 + h - 14;
-  const rx = x0 + 8;
-  txt('NEW PIP', rx, ry, 8, FB); ry -= 10;
-  txt(`11 KV ${ph} line  -  ${nLen || '___'} Mtr`, rx + 6, ry, 7.5); ry -= 12;
-  txt('DISMANTLE', rx, ry, 8, FB); ry -= 10;
-  txt(`11 KV ${dph} line  -  ${dLen || '___'} Mtr`, rx + 6, ry, 7.5);
+  // what the work adds up to, as written beside the sketch
+  let ry = y0 + h - 14; const rx = x0 + 8;
+  txt('NEW PIP', rx, ry, 8, FB, null, red); ry -= 10;
+  if (ohLen) { txt(`11 KV ${ph} O/H line - ${ohLen} Mtr, ${np} pole${np === 1 ? '' : 's'}`, rx + 6, ry, 7.5, F, null, red); ry -= 10; }
+  if (ugLen) { txt(`11 KV U/G cable - ${ugLen} Mtr${loopW}`, rx + 6, ry, 7.5, F, null, red); ry -= 10; }
+  ry -= 2; txt('DISMANTLE (A TO B)', rx, ry, 8, FB); ry -= 10;
+  txt(`11 KV ${dph} line - ${dLen || '___'} Mtr (A to B)`, rx + 6, ry, 7.5);
   const ru = (e.rows || []).filter(r => r.q && num(r.q.reu));
   if (ru.length) { ry -= 12; txt('RE-USE', rx, ry, 8, FB); ry -= 10;
     txt(ru.slice(0, 2).map(r => `${fmtQty(r.q.reu)} ${r.unit} ${r.name.split('(')[0].trim()}`).join(',  '), rx + 6, ry, 7); }
   // key
   const lgy = y0 + 10;
-  line(x0 + 14, lgy, x0 + 40, lgy, 1.3); txt('EXISTING LINE', x0 + 45, lgy - 3, 7);
-  line(x0 + 118, lgy, x0 + 144, lgy, 1.2, true, red); txt('NEW PIP LINE', x0 + 149, lgy - 3, 7, F, null, red);
-  cross(x0 + 224, lgy, 4); txt('POLE', x0 + 232, lgy - 3, 7);
+  line(x0 + 14, lgy, x0 + 38, lgy, 1.4); txt('EXISTING', x0 + 42, lgy - 3, 7);
+  line(x0 + 92, lgy, x0 + 116, lgy, 1.4, true, red); txt('NEW PIP LINE', x0 + 120, lgy - 3, 7);
+  pdfCoil(page, x0 + 182, lgy, x0 + 206, lgy, { pitch: 7, amp: 4, color: red }); txt('U/G CABLE', x0 + 216, lgy - 3, 7);
+  cross(x0 + 272, lgy, 4); txt('POLE', x0 + 280, lgy - 3, 7);
+  cutBox(x0 + 320, lgy); txt('CUT POINT', x0 + 330, lgy - 3, 7);
+  txt('Red: proposed work.  Black: existing.', x0 + w, lgy - 3, 6.5, F, 'r');
 }
 function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   const { rgb } = PDFLib, ink = rgb(0, 0, 0), volt = rgb(0.95, 0.72, 0.02);
-  const line = (a, b, c, d, t, dash) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t || 1, color: ink }, dash ? { dashArray: [4, 3] } : {}));
+  const red = rgb(0.80, 0.10, 0.08);
+  const line = (a, b, c, d, t, dash, col) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t || 1, color: col || ink }, dash ? { dashArray: PDF_DOT } : {}));
   const txt = (t, x, y, sz, f, al) => { const s2 = pdfSafe(t), ff = f || F, wd = ff.widthOfTextAtSize(s2, sz || 8);
     page.drawText(s2, { x: al === 'c' ? x - wd / 2 : al === 'r' ? x - wd : x, y, size: sz || 8, font: ff, color: ink }); };
-  const cross = (x, y, r) => { line(x - r, y - r, x + r, y + r); line(x - r, y + r, x + r, y - r); };
+  const cross = (x, y, r, col) => { line(x - r, y - r, x + r, y + r, 1, false, col); line(x - r, y + r, x + r, y - r, 1, false, col); };
   const k = Math.min(1, h / 250);                            // squeeze the sketch when space is short
   const cx = x0 + w * 0.42;                                  // the take-off pole sits left of centre
   const fy = y0 + h - 26 * k;                                // existing feeder line
   line(x0 + 14, fy, x0 + w - 14, fy, 1.3);
   for (let x = x0 + 40; x < x0 + w - 30; x += 62) if (Math.abs(x - cx) > 20) cross(x, fy, 4);
   cross(cx, fy, 5);
+  if (s.ug && s.ugTap) { page.drawCircle({ x: cx, y: fy, size: 6.5, borderColor: red, borderWidth: 1.1 }); cross(cx, fy, 3.8, red); }   // new purpose pole
   txt(`11 KV ${s.feeder || ''} FEEDER`.trim(), x0 + w / 2, fy + 10, 9, FB, 'c');
-  txt('POLE', cx + 9, fy - 14, 8, FB);
-  let y = fy - 10 * k;
+  txt(s.ug ? (s.ugTap ? 'NEW PURPOSE POLE' : 'POLE') : s.ul ? 'POLE' : (s.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE'), cx + 9, fy - 14, 8, FB);
+  const loopWord = s.loop == null ? ' (INCL. 30 MTR LOOP)' : s.loop ? ` + ${s.loop} MTR LOOP` : '';
+  const coil = (yy, len) => { pdfCoil(page, cx, yy, cx, yy - len, { color: red }); return yy - len; };
+  let y = fy;
   const drop = 46 * k;
   if (s.ug) {
-    line(cx, y, cx, y - 10, 1.2, true);
-    line(cx + 3, y - 10, cx + 11, y - 10, 0.9); line(cx + 3, y - 10, cx + 3, y - 3, 0.9);   // right-angle marker
-    let yy = y - 10;                                          // coil for the cable
-    const seg = 5 * k, n9 = Math.max(5, Math.round(9 * k));
-    for (let q = 0; q < n9; q++) {
-      line(cx, yy, cx + (q % 2 ? -7 : 7), yy - seg, 1.1); line(cx + (q % 2 ? -7 : 7), yy - seg, cx, yy - 2 * seg, 1.1); yy -= 2 * seg; }
-    y = yy;
+    const top = fy - (s.ugTap ? 6.5 : 0);
+    y = coil(top, 90 * k);
     const cl = s.ht ? s.ugLen : s.htLen;
-    const lab = [`11 KV ${s.cable} XLPE U/G CABLE`, s.ht ? `${cl} MTR SERVICE LINE` : `${cl} MTR + 30 MTR LOOP`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`];
-    lab.forEach((t, i) => txt(t, cx + 22, y + (fy - 10 - y) * 0.62 - i * 11, 8));
+    const lab = [s.ht ? `${cl} MTR SERVICE LINE` : `${cl} MTR U/G CABLE`, `11 KV ${s.cable} XLPE${s.ht ? '' : loopWord}`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`];
+    lab.forEach((t, i) => txt(t, cx + 22, y + (fy - y) * 0.6 - i * 11, i ? 8 : 9, i ? F : FB));
   } else if (!s.htLen && s.kva) {
-    line(cx, y, cx, y - 34 * k, 1.2, true);
+    line(cx, y, cx, y - 34 * k, 1.4, true, red);
     if (s.ul) txt(`JUMPER ${s.jumper} MTR`, cx + 14, y - 18 * k, 8);
     y -= 34 * k;
+  } else if (s.ou && s.htLen) {                        // overhead line first, then the U/G cable
+    const bot = y - drop * 1.1, ohPoles = Math.max(0, s.poles - 1);
+    line(cx, y, cx, bot - 0.5, 1.4, true, red);
+    const np = Math.max(1, Math.min(ohPoles, 3));
+    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 1.1) * q / (np + 1), 4, red);
+    [`${s.htLen} MTR O/H LINE`, `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${ohPoles} NOS PCC POLE${s.dp ? ' + ' + s.dp + ' DP' : ''}`].forEach((t, i) => txt(t, cx + 16, y - 26 * k - i * 11, i ? 8 : 9, i ? F : FB));
+    page.drawCircle({ x: cx, y: bot - 6, size: 6, borderColor: red, borderWidth: 1.1 }); cross(cx, bot - 6, 3.6, red);   // joins the line above and the cable below
+    txt(s.toSS ? 'CUT POINT' : 'CUT POINTS (CROSSING)', cx - 10, bot - 9, 7, FB, 'r');
+    const cTop = bot - 12, cBot = coil(cTop, 60 * k);
+    [`${s.ugLen} MTR U/G CABLE`, `11 KV ${s.cable} XLPE${loopWord}`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`].forEach((t, i) => txt(t, cx + 22, (cTop + cBot) / 2 + 8 - i * 11, i ? 8 : 9, i ? F : FB));
+    y = cBot;
   } else if (s.htLen) {
     const bot = y - drop * 2;
-    line(cx, y, cx, bot, 1.2, true);                        // proposed line: dashed
+    line(cx, y, cx, bot, 1.4, true, red);                   // proposed line: dotted, red
     const np = Math.max(1, Math.min(s.poles, 8));
-    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 2) * q / (np + 1), 4);
-    const lab2 = `${s.htLen} MTR, ${s.poles} NOS PCC POLE${s.poles > np ? ' (shown in part)' : ''}${s.dp ? ' + ' + s.dp + ' DP SET' : ''}`;
-    [`11 KV ${s.ph === '1' ? '1-PH' : '3-PH'} O/H LINE`, lab2].forEach((t, i) => txt(t, cx + 16, y - drop * 0.55 - i * 11, 8));
+    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 2) * q / (np + 1), 4, red);
+    const lab2 = `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${s.poles} NOS PCC POLE${s.poles > np ? ' (shown in part)' : ''}${s.dp ? ' + ' + s.dp + ' DP SET' : ''}`;
+    [`${s.htLen} MTR O/H LINE`, lab2].forEach((t, i) => txt(t, cx + 16, y - drop * 0.55 - 10 * k - i * 11, i ? 8 : 9, i ? F : FB));
     y = bot;
   }
   if (!s.kva && s.ht) {                                 // HT-LIP: metering at 11 KV, the transformer is the consumer's own
-    const bw = 96, bh = Math.max(30, 40 * k), bx = cx - bw / 2, by = y - bh - 6 * k;
+    const bw = 96, bh = Math.max(30, 40 * k), bx = cx - bw / 2, by = y - bh;
     page.drawRectangle({ x: bx, y: by, width: bw, height: bh, borderColor: ink, borderWidth: 1.3 });
     txt('CT-PT SET', cx, by + bh - 13, 9, FB, 'c');
     txt('WITH HT TVM', cx, by + 6, 8, F, 'c');
@@ -6522,8 +6640,8 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     y = by;
   }
   if (s.kva) {
-    const bw = 86, bh = Math.max(32, 44 * k), bx = cx - bw / 2, by = y - bh - 6 * k;
-    page.drawRectangle({ x: bx, y: by, width: bw, height: bh, borderColor: ink, borderWidth: 1.3 });
+    const bw = 86, bh = Math.max(32, 44 * k), bx = cx - bw / 2, by = y - bh;
+    page.drawRectangle({ x: bx, y: by, width: bw, height: bh, borderColor: red, borderWidth: 1.4 });
     txt(`${s.kva} KVA`, cx, by + bh - 14, 10, FB, 'c');
     txt(s.ph === '1' ? '1-PHASE' : '3-PHASE', cx, by + bh - 25, 8, F, 'c');
     txt('T/F', cx, by + 5, 8, F, 'c');
@@ -6532,7 +6650,7 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     y = by;
   }
   if (s.ltLen) { const lx = cx + 120;
-    line(cx, y - 6, cx, y - 16, 1.1, true); line(cx, y - 16, lx, y - 16, 1.1, true);
+    line(cx, y, cx, y - 16, 1.3, true, red); line(cx, y - 16, lx, y - 16, 1.3, true, red);
     txt(`LT ${s.ltPh === '1' ? '1-PH' : '3-PH'} AB CABLE ${s.ltLen} MTR${s.ltPoles ? ', ' + s.ltPoles + ' NOS POLE' : ''}`, cx + 8, y - 27, 8);
     y = y - 16; }
   if (s.dis) {                                              // shifting: the stretch coming out
@@ -6545,10 +6663,11 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   }
   const lgy = y0 + 8;                                       // legend
   line(x0 + 14, lgy, x0 + 34, lgy, 1.2); txt('EXISTING', x0 + 38, lgy - 3, 7);
-  line(x0 + 96, lgy, x0 + 116, lgy, 1.2, true); txt('PROPOSED', x0 + 120, lgy - 3, 7);
-  cross(x0 + 186, lgy, 4); txt('POLE', x0 + 194, lgy - 3, 7);
+  line(x0 + 96, lgy, x0 + 116, lgy, 1.4, true, red); txt('PROPOSED (RED)', x0 + 120, lgy - 3, 7);
+  pdfCoil(page, x0 + 186, lgy, x0 + 210, lgy, { pitch: 8, amp: 4, color: red }); txt('U/G CABLE', x0 + 222, lgy - 3, 7);
+  cross(x0 + 282, lgy, 4); txt('POLE', x0 + 290, lgy - 3, 7);
   const ly = Math.max(y0 + 24, y - 34 * k);
-  line(cx, y - 6, cx, ly + 14, 1.1, true);
+  line(cx, y, cx, ly + 14, 1.2);                            // the supply goes on to the load, unbroken
   page.drawCircle({ x: cx, y: ly, size: 14, borderColor: ink, borderWidth: 1.2, color: volt, opacity: 0.25 });
   txt('LOAD', cx, ly - 3, 8, FB, 'c');
   if (kwLabel) txt(kwLabel, cx + 20, ly - 3, 9, FB);
@@ -6635,6 +6754,7 @@ async function sldMake() {
 const SLD_ACTS = {
   sld: () => sldSheetUI(App.est),
   sldmode: (t, d) => { const e = App.est; sldGrab(); (e.sld || (e.sld = {})).mode = d.m; touch(); sldSheetUI(e); },
+  sldroute: (t, d) => { const e = App.est; sldGrab(); (e.sld || (e.sld = {})).route = d.r; touch(); sldSheetUI(e); },
   sldscan: (t) => { const e = App.est; (e.sld || (e.sld = {})).scan = t.checked; touch(); toast(t.checked ? 'The photo will be cleaned up' : 'The photo will print as it is'); },
   sldimgdel: async () => { const e = App.est; delete App.slds[e.id]; await Store.del('sld:' + e.id); if (e.sld) e.sld.img = false; touch(); sldSheetUI(e); },
   sldnotes: () => sldNotesUI(),
