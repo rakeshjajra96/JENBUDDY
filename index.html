@@ -901,7 +901,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '01.10.2026 23:30';
+const APP_VERSION = '05.10.2026 15:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -2018,7 +2018,17 @@ if (typeof module !== 'undefined') module.exports = { VR_BASE, VR_TEXT, VR_NARED
 function r3(x) { return Math.round((+x || 0) * 1000 + (x >= 0 ? 1e-9 : -1e-9)) / 1000; }
 function num(x) { const n = parseFloat(x); return isFinite(n) ? n : 0; }
 
-const DEFAULT_NORMS = { span: 50, nbPerPole: 2, nbPerPoleLT: 1, nbSS: 7, stayWireKg: 7, jumper3: 15, jumper1: 5, dpEvery: 500, earthing: 3, tfShiftRate: 3000 };
+const DEFAULT_NORMS = { span: 50, nbPerPole: 2, nbPerPoleLT: 1, nbSS: 7, stayWireKg: 7, jumper3: 15, jumper1: 5, dpEvery: 500, earthing: 3, earthing1: 4, tfShiftRate: 3000 };
+/* earthing sets at a transformer S/S: 3 on a 3-Ph S/S, 4 on a 1-Ph S/S (Rakesh, 02.10.2026) */
+function earthFor(ph, N) { N = N || {}; return ph === '1' ? (N.earthing1 == null || N.earthing1 === '' ? 4 : num(N.earthing1)) : (N.earthing == null || N.earthing === '' ? 3 : num(N.earthing)); }
+/* L turns: where each turn stands, metres from the start. Valid only when they go up in order and stay inside the line. */
+function turnSegs(p, d) {
+  const t = Math.max(0, Math.floor(num(p.turns))); if (!t || t > 6 || !(d > 0)) return null;
+  const tas = []; for (let k = 1; k <= t; k++) tas.push(num(p['ta' + k]));
+  if (!tas.every((v, k) => v > 0 && v < d && (k === 0 || v > tas[k - 1]))) return null;
+  const pts = [0].concat(tas, [d]); return pts.slice(1).map((v, k) => r3(v - pts[k]));
+}
+function taOf(i) { const o = {}; for (let k = 1; k <= 6; k++) if (i['ta' + k] != null) o['ta' + k] = i['ta' + k]; return o; }
 
 function makeCatalog(base, overrides, custom) {
   const list = base.map(it => Object.assign({}, it, (overrides || {})[it.key] || {}));
@@ -2049,7 +2059,9 @@ function buildLineParts(p, N) {
   const withSS = p.withSS !== false && kva > 0;
   const info = {};
   if (d > 0) {
-    const raw = Math.ceil(d / N.span - 1e-9);
+    const segs = turnSegs(p, d);                                     // with the turn points known, each stretch is counted on its own
+    const raw = segs ? segs.reduce((s2, v) => s2 + Math.ceil(v / N.span - 1e-9), 0) : Math.ceil(d / N.span - 1e-9);
+    if (segs) info.segs = segs;
     const line = withSS ? Math.max(0, raw - 1) : raw;              // last span lands on the S/S pole
     const dp = d > N.dpEvery ? Math.floor((d - 1) / N.dpEvery) : 0;   // DP set at every 500 m
     const armPoles = Math.max(0, line - turns);                       // turn pole gets no V-cross / pins
@@ -2080,7 +2092,7 @@ function buildLineParts(p, N) {
     add(ss, 'pole9_200', ssPoles);
     add(ss, BAND_KEY[ssBand(ph, kva, mount)], 1);
     if (p.fuse !== false) add(ss, ph === '3' ? 'sfu3' : 'sfu1', 1);
-    add(ss, 'earthing', N.earthing);                   // always 3
+    add(ss, 'earthing', earthFor(ph, N));              // 3 on a 3-Ph S/S, 4 on a 1-Ph S/S
     const discs = ul ? (p.ulDisc == null ? tdc : num(p.ulDisc)) : tdc;
     add(ss, 'disc11', discs); add(ss, 'hw45tc', discs);
     if (p.withTF !== false) add(ss, tfKey(ph, kva), 1);
@@ -2168,7 +2180,7 @@ function ulSet(ph, kva, N, withTF) {
   const o = {}, add = (k, q) => { if (q > 0) o[k] = r3((o[k] || 0) + q); };
   if (ph === '3') { add('pole9_200', 2); add('vcross11', 2); add('pin11', 6); add('ssstr_dp', 1); add('sfu3', 1); add('rabbit', N.jumper3); }
   else { add('pole9_200', 1); add(BAND_KEY[ssBand('1', kva, 'S')], 1); add('sfu1', 1); add('rabbit', N.jumper1); }
-  add('earthing', N.earthing);
+  add('earthing', earthFor(ph, N));
   add('nutbolt', N.nbSS == null ? 7 : num(N.nbSS));
   add('stayset', 2); add('stayins', 2); add('stayclamp', 2); add('staywire', 2 * N.stayWireKg);
   if (withTF !== false && kva) add(tfKey(ph, kva), 1);
@@ -2278,7 +2290,7 @@ function buildSIS(inp, cat, N) {
   if (nb === '3dp' && ob !== '3dp') push('pole9_200', 2, 'A');
   if (!sameTF && nK) push(tfKey(nPh, nK), 1, 'A');
   if (ob !== nb) push(BAND_KEY[nb], 1, 'A');
-  push('earthing', 3, 'A');
+  push('earthing', earthFor(nPh, N), 'A');
   if (!sameTF && oK) push(tfKey(oPh, oK), 1, 'B', 'T');
   if (ob !== nb) push(BAND_KEY[ob], 1, 'B', 'M');
   const NN = N || (typeof DEFAULT_NORMS === 'object' ? DEFAULT_NORMS : {}), add = (parts, blk, flag, skip) => {
@@ -2750,19 +2762,19 @@ function buildHT(inp, N, cat) {
   put('cable', 'cjk' + z + 'in', num(i.ugIn));
   // 2. S/S material
   if (line && ugLine) {                                  // overhead line, then U/G cable into the S/S
-    const parts = buildLineParts({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: false }, N);
+    const parts = buildLineParts(Object.assign({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: false }, taOf(i)), N);
     const all = {}, add = (k, q) => { all[k] = r3((all[k] || 0) + q); };
     Object.keys(parts.ht).forEach(k => add(k, parts.ht[k]));       // the line lands on the pole where the cable starts
     add('ch14', 1); add('disc11', 3); add('hw45tc', 3); add('pole9_200', 3);   // that pole's cut point + the D/P S/S poles
     add('stayclamp', 2); add('stayins', 2); add('stayset', 2); add('staywire', 2 * N.stayWireKg);
-    add('pin11', 6); add('vcross11', 2); add('nutbolt', N.nbSS == null ? 7 : num(N.nbSS)); add('rabbit', N.jumper3); add('earthing', N.earthing);
+    add('nutbolt', N.nbSS == null ? 7 : num(N.nbSS)); add('rabbit', N.jumper3); add('earthing', earthFor('3', N));   // no V-cross / pin on the H pole: only an under-line S/S has them
     add('hgfuse11', 1); add('ssstr_dp', 1);
     if (i.withTF === true && num(i.tfKVA)) add(tfKey('3', num(i.tfKVA)), 1);
     if (num(i.lattice)) add('lattice36', num(i.lattice));
     Object.keys(all).sort((a, b) => orderIndex(a) - orderIndex(b)).forEach(k => put('ss', k, all[k]));
   } else if (line) {                                     // a line is to be erected: the usual distance formula
-    const parts = buildLineParts({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff,
-      withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: i.withTF === true }, N);
+    const parts = buildLineParts(Object.assign({ htDist: i.htDist, htPhase: '3', turns: i.turns, takeoff: i.takeoff,
+      withSS: true, tfKVA: i.tfKVA || 63, mount: 'D', withTF: i.withTF === true }, taOf(i)), N);
     const all = {}; [parts.ht, parts.ss].forEach(o => Object.keys(o).forEach(k => { all[k] = r3((all[k] || 0) + o[k]); }));
     Object.keys(all).sort((a, b) => orderIndex(a) - orderIndex(b)).forEach(k => put('ss', k, all[k]));
   } else if (!ugLine) {                                 // under the existing line: the fixed under-line set only
@@ -2773,8 +2785,7 @@ function buildHT(inp, N, cat) {
     put('ss', 'ch14', 1); put('ss', 'disc11', 3); put('ss', 'hw45tc', 3);
     put('ss', 'pole9_200', 3);
     put('ss', 'stayclamp', 2); put('ss', 'stayins', 2); put('ss', 'stayset', 2); put('ss', 'staywire', 2 * N.stayWireKg);
-    put('ss', 'pin11', 6); put('ss', 'vcross11', 2);
-    put('ss', 'nutbolt', N.nbSS == null ? 7 : num(N.nbSS));
+    put('ss', 'nutbolt', N.nbSS == null ? 7 : num(N.nbSS));          // no V-cross / pin on the H pole: only an under-line S/S has them
     put('ss', 'rabbit', N.jumper3);
     put('ss', 'earthing', N.earthing);
     put('ss', 'hgfuse11', 1);
@@ -3451,6 +3462,13 @@ const I = {
 const fld = (label, path, val, o) => { o = o || {}; return `<label class="f${o.cls ? ' ' + o.cls : ''}"><span>${label}</span><input data-bind="${path}"${o.n ? ' data-n="1" type="number" step="any" min="0" inputmode="decimal"' : ''}${o.list ? ` list="${o.list}"` : ''} value="${esc(val)}" placeholder="${esc(o.ph || '')}" autocomplete="off"></label>`; };
 const seg = (label, path, val, opts, cls) => `<div class="f${cls ? ' ' + cls : ''}"><span>${label}</span><div class="seg" role="radiogroup" aria-label="${esc(label)}">${opts.map(([v, t]) => `<button type="button" role="radio" aria-checked="${String(val) === String(v)}" data-seg="${path}" data-val="${v}">${t}</button>`).join('')}</div></div>`;
 const sel = (label, path, val, opts, cls) => `<label class="f${cls ? ' ' + cls : ''}"><span>${label}</span><select data-bind="${path}">${opts.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(val) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+function turnBoxes(i) {
+  const t = Math.min(6, Math.max(0, Math.floor(num(i.turns)))); if (!t) return '';
+  const d = num(i.htDist), typed = [...Array(t)].some((_, k) => i['ta' + (k + 1)] != null && i['ta' + (k + 1)] !== '');
+  return [...Array(t)].map((_, k) => fld(`L-turn ${k + 1} at (m from the start)`, `inp.ta${k + 1}`, i['ta' + (k + 1)], { n: 1, ph: 'e.g. ' + (Math.round(d * (k + 1) / (t + 1)) || 50 * (k + 1)) })).join('')
+    + (typed && !turnSegs(i, d) ? '<p class="hint warnline span2">Turn distances must go up in order and stay below the line length. Until then poles are counted as length ÷ span.</p>' : '')
+    + (turnSegs(i, d) ? `<p class="hint span2">Stretches: ${turnSegs(i, d).map(v => v + ' m').join(' + ')}. Poles are counted stretch by stretch; the SLD turns at these points.</p>` : '');
+}
 const stepper = (label, path, val, cls) => `<div class="f${cls ? ' ' + cls : ''}"><span>${label}</span><div class="step"><button type="button" data-step="${path}" data-d="-1" aria-label="Decrease">&minus;</button><input data-bind="${path}" data-n="1" type="number" min="0" inputmode="numeric" value="${esc(val)}" aria-label="${esc(label)}"><button type="button" data-step="${path}" data-d="1" aria-label="Increase">+</button></div></div>`;
 const chk = (label, path, val, dis) => `<label class="chk"><input type="checkbox" data-bind="${path}"${val ? ' checked' : ''}${dis ? ' disabled' : ''}><span>${label}</span></label>`;
 
@@ -3819,7 +3837,7 @@ function htBlock(e, sh) {
     const N = App.settings.norms;
     return `<div class="grid2">${mode}${phase}
       </div>
-    <p class="hint" style="margin:-2px 0 8px">Jumper ${ph3 ? N.jumper3 : N.jumper1} Mtr (5 Mtr a phase), 2 stay sets and ${N.earthing} earthing sets are fixed for an under-line S/S.</p>
+    <p class="hint" style="margin:-2px 0 8px">Jumper ${ph3 ? N.jumper3 : N.jumper1} Mtr (5 Mtr a phase), 2 stay sets and ${earthFor(ph3 ? '3' : '1', N)} earthing sets are fixed for an under-line S/S.</p>
     <p class="hint">The sub-station stands right below the existing 11 KV line, so no line poles and no cut point are taken — only the jumper from the line down to the transformer.${ph3 ? ' A 3-Ph S/S always carries a V-cross with 3 pin insulators on each of its poles, so those are included.' : ''} Every figure above can be changed in the material list.</p>`;
   }
   const size = seg('Cable', 'inp.ugSize', i.ugSize === '120' ? '120' : '185', [['185', '3C x 185'], ['120', '3C x 120']]);
@@ -3828,7 +3846,7 @@ function htBlock(e, sh) {
   const verm = `${chk('Vermiculite on the route length, not on the loop (untick for civil 10% on cable instead)', 'opt.verm', e.opt.verm !== false)}
     ${e.opt.verm !== false ? `<div class="grid2">${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}<div></div></div>` : ''}`;
   const ohBoxes = `${fld(ou ? 'Overhead length (metre)' : 'Length (metre)', 'inp.htDist', i.htDist, { n: 1, ph: '0' })}${ou ? '' : phase}
-    ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}`;
+    ${stepper('L turns', 'inp.turns', i.turns || 0)}${seg('Line starts from', 'inp.takeoff', i.takeoff || 'P', [['P', 'Existing pole'], ['N', 'New point']])}${turnBoxes(i)}`;
   if (ug) return `<div class="grid2">${mode}${size}${phase}
     ${ugBoxes}</div>
     ${chk('Tapping pole on the existing line: 1 pole, 1 cut point, ' + (ph1 ? '1 disc' : '3 disc') + ' with H/W', 'inp.ugTap', i.ugTap !== false)}
@@ -3877,11 +3895,11 @@ function cardHT(e) {
   const i = e.inp, mode = i.lineMode || (num(i.htDist) > 0 ? 'OH' : 'UL');
   const ugF = `${fld('11 KV U/G cable route ' + (mode === 'OU' ? 'from the last overhead pole' : 'from the tapping') + ' (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}`;
   const lineBody = mode === 'OU'
-    ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
+    ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}${turnBoxes(i)}</div>
        <div class="h4" style="margin-top:12px">U/G cable part (into the S/S)</div><div class="grid2">${ugF}</div>
        <p class="hint">The overhead part follows your span rule. The pole where it goes into the cable gets 1 cut point and 3 disc with H/W; 2 outdoor CJK for this cable. Vermiculite on the cable route only; the loop goes under labour 10%.</p>`
     : mode === 'OH'
-    ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}</div>
+    ? `<div class="grid2">${fld('11 KV overhead line (metre)', 'inp.htDist', i.htDist, { n: 1 })}${stepper('L turns', 'inp.turns', i.turns || 0)}${turnBoxes(i)}</div>
        <p class="hint">Poles, cross arms, pins, cut points, DP and conductor come from your span rule, like a new connection. The S/S set at the premises is added too.</p>`
     : mode === 'UG'
     ? `<div class="grid2">${fld('11 KV U/G cable route from the tapping (metre)', 'inp.ugLine', i.ugLine, { n: 1 })}${fld('Loop (metre)', 'inp.ugLoop', i.ugLoop, { n: 1, ph: '0' })}${fld('Straight joint STJ (Nos)', 'inp.ugStj', i.ugStj, { n: 1, ph: '0' })}${fld('Vermiculite rate, 11 KV (Rs. per Mtr)', 'opt.vermRate', e.opt.vermRate, { n: 1, ph: '335.39' })}</div>
@@ -4546,7 +4564,7 @@ function viewMore() {
   <div class="card"><div class="h3">Printed on every estimate</div><div class="grid2">${sf('Office line', 'office')}${sf('X.En. signature label', 'xen')}${sf('A.En. signature label', 'aen')}${sf('J.En. signature label', 'jen')}${sf('Rate list line', 'sirLabel')}</div></div>
   <div class="card"><div class="h3">Quantity rules</div><p class="hint">Used when an estimate is built. Change only if your norm changes.</p><div class="grid3">
     ${nf('Span (m)', 'span')}${nf('Nut & bolt kg per HT pole', 'nbPerPole')}${nf('Nut & bolt kg per LT pole', 'nbPerPoleLT')}${nf('Nut & bolt kg for the S/S', 'nbSS')}${nf('Stay wire kg per stay', 'stayWireKg')}${nf('Jumper 3-Ph (m)', 'jumper3')}${nf('Jumper 1-Ph (m)', 'jumper1')}
-    ${nf('DP set every (m)', 'dpEvery')}${nf('Earthing sets at S/S', 'earthing')}${nf('T/F shifting charge (Rs.)', 'tfShiftRate')}</div>
+    ${nf('DP set every (m)', 'dpEvery')}${nf('Earthing sets, 3-Ph S/S', 'earthing')}${nf('Earthing sets, 1-Ph S/S', 'earthing1')}${nf('T/F shifting charge (Rs.)', 'tfShiftRate')}</div>
     <div class="btnrow"><button class="btn btn-sm btn-quiet" data-act="resetnorms">Reset rules</button></div>
     <div class="h4" style="margin-top:14px">My own rules</div>
     <p class="hint">Add anything your office takes that the app does not — for example a danger plate on every HT pole, or an extra earthing at every DP.</p>
@@ -4628,7 +4646,7 @@ function onClick(ev) {
   if (d.new) { startNew(d.new); return; }
   if (d.open) { if (App.sheetOpen) { closeSheet(); setTimeout(() => openEstimate(d.open), 120); } else openEstimate(d.open); return; }
   if (d.seg) { setPath(App.est, d.seg, d.val); onSegChange(d.seg); return; }
-  if (d.step) { const cur = num(getPath(App.est, d.step)); const v = Math.max(0, cur + num(d.d)); setPath(App.est, d.step, v); const inp = t.parentNode.querySelector('input'); if (inp) { inp.value = v; onBind(inp); } return; }
+  if (d.step) { const cur = num(getPath(App.est, d.step)); const v = Math.max(0, cur + num(d.d)); setPath(App.est, d.step, v); const inp = t.parentNode.querySelector('input'); if (inp) { inp.value = v; onBind(inp); } if (d.step === 'inp.turns' && typeof rerenderKeepScroll === 'function') rerenderKeepScroll(); return; }
   if (d.key && t.classList.contains('pick')) { addRow(d.key); return; }
   if (d.quick) { openQuick(d.quick); return; }
   if (d.preset) { const e = App.est; applyPreset(e, d.preset); if (e.built) e.stale = true; touch(); rerenderKeepScroll(); return; }
@@ -6198,7 +6216,7 @@ function sldInfo(e) {
     try { info = buildLineParts({ htDist: ug ? 0 : htLen, htPhase: ph, turns: i.turns, takeoff: i.takeoff, withSS: i.withSS !== false,
       tfKVA: kva, mount, ltDist: num(i.ltDist) || num(i.ltCable), ltPhase: i.ltPhase }, N).info; } catch (er) { info = {}; }
   }
-  return { loop: i.ugLoop == null || i.ugLoop === '' ? null : num(i.ugLoop), ugTap: i.ugTap !== false, takeoff: i.takeoff || 'P', toSS: i.ugToSS !== false,
+  return { segs: (!ug || ou || ht) ? turnSegs(i, num(i.htDist)) : null, loop: i.ugLoop == null || i.ugLoop === '' ? null : num(i.ugLoop), ugTap: i.ugTap !== false, takeoff: i.takeoff || 'P', toSS: i.ugToSS !== false,
     ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
     cable: i.ugSize === '120' ? '3C x 120 sqmm' : '3C x 185 sqmm', out: i.ugOut == null ? 2 : num(i.ugOut), stj: num(i.ugStj), inn: num(i.ugIn),
     ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen),
@@ -6350,6 +6368,32 @@ function sldGrab() {
 /* ---------- the drawing ---------- */
 /* HT site map, drawn the way it is done by hand:
    the existing feeder coming down to the new DP set, then the equipment in a line up to the load */
+/* an overhead run with its L turns: down, sideways, down ... each stretch marked with its own length and its poles.
+   dir -1: the turns go to the left. Returns the end point. */
+function pdfRun(page, x, y, segs, o) {
+  const red = o.color || PDFLib.rgb(0.80, 0.10, 0.08), span = o.span || 50;
+  const vSum = segs.filter((_, k) => k % 2 === 0).reduce((a, b) => a + b, 0) || 1, hSum = segs.filter((_, k) => k % 2).reduce((a, b) => a + b, 0) || 1;
+  const ln = (a, b, c, d) => page.drawLine({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: 1.4, color: red, dashArray: PDF_DOT });
+  const cr = (cx, cy, r) => { page.drawLine({ start: { x: cx - r, y: cy - r }, end: { x: cx + r, y: cy + r }, thickness: 1, color: red }); page.drawLine({ start: { x: cx - r, y: cy + r }, end: { x: cx + r, y: cy - r }, thickness: 1, color: red }); };
+  const tx = (t, xx, yy, sz, f) => page.drawText(pdfSafe(t), { x: xx, y: yy, size: sz, font: f, color: red });
+  let px = x, py = y;
+  segs.forEach((len, k) => {
+    const vert = k % 2 === 0, L = vert ? Math.max(16, o.vBudget * len / vSum) : Math.max(28, o.hBudget * len / hSum);
+    const nx = vert ? px : px + o.dir * L, ny = vert ? py - L : py;
+    ln(px, py, nx, ny);
+    const show = Math.min(Math.max(1, Math.ceil(len / span - 1e-9)) - 1, 4);
+    for (let q = 1; q <= show; q++) { const t = q / (show + 1); cr(px + (nx - px) * t, py + (ny - py) * t, 3.6); }
+    if (k < segs.length - 1) { cr(nx, ny, 4.8); tx('L' + (k + 1), nx + (vert ? (o.dir < 0 ? 6 : -16) : 4), ny + (vert ? -10 : 5), 6.5, o.FB); }
+    const lab = pdfSafe(`${len} M`), wd = o.FB.widthOfTextAtSize(lab, 7.5);
+    if (vert) tx(lab, px - 6 - wd, (py + ny) / 2 - 3, 7.5, o.FB); else tx(lab, (px + nx) / 2 - wd / 2, py + 5, 7.5, o.FB);
+    px = nx; py = ny;
+  });
+  return { x: px, y: py };
+}
+function runWidth(segs, hBudget) {
+  const hSum = segs.filter((_, k) => k % 2).reduce((a, b) => a + b, 0) || 1;
+  return segs.reduce((s2, len, k) => s2 + (k % 2 ? Math.max(28, hBudget * len / hSum) : 0), 0);
+}
 function pdfCoil(page, x1, y1, x2, y2, o) {
   o = o || {}; const ink = PDFLib.rgb(0, 0, 0);
   const L = Math.hypot(x2 - x1, y2 - y1); if (L < 2) return;
@@ -6378,11 +6422,12 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
   const ohLen = (lm === 'OH' || lm === 'OU') ? num(i.htDist) : 0, ugLen = (lm === 'UG' || lm === 'OU') ? num(i.ugLine) : 0;
   const cableName = (i.ugSize === '120' ? '3C X 120' : '3C X 185') + ' SQMM XLPE', loop = num(i.ugLoop), stj = num(i.ugStj);
   let linePoles = 0, dpn = 0;
-  if (ohLen) { try { const inf = buildLineParts({ htDist: ohLen, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: 63, mount: 'D', withTF: false }, App.settings.norms).info; linePoles = num(inf.linePoles); dpn = num(inf.dp); } catch (er) { } }
+  if (ohLen) { try { const inf = buildLineParts(Object.assign({ htDist: ohLen, htPhase: '3', turns: i.turns, takeoff: i.takeoff, withSS: true, tfKVA: 63, mount: 'D', withTF: false }, taOf(i)), App.settings.norms).info; linePoles = num(inf.linePoles); dpn = num(inf.dp); } catch (er) { } }
   // the existing 11 KV line along the top, as it runs past the site
   const lineEnd = x0 + w * 0.68;
   line(x0 + 6, feedY, lineEnd, feedY, 1.4);
-  [feedX + 70, feedX + 150, feedX + 230].filter(px => px < lineEnd - 10).forEach(px => cross(px, feedY, 4.5));
+  const tS = ohLen ? turnSegs(i, ohLen) : null, tapX0 = tS && tS.length > 1 ? feedX + runWidth(tS, Math.min(80, w * 0.15)) : feedX;
+  [tapX0 + 70, tapX0 + 150, tapX0 + 230].filter(px => px < lineEnd - 10).forEach(px => cross(px, feedY, 4.5));
   const ring = (x, y) => page.drawCircle({ x, y, size: 3.1, borderColor: ink, borderWidth: 0.9 });
   const vCable = (ya, yb) => pdfCoil(page, feedX, ya, feedX, yb, { color: red });
   const vLine = (ya, yb, np) => { line(feedX, ya, feedX, yb, 1.4, true, red); const m2 = Math.max(0, Math.min(np, 5)); for (let q = 1; q <= m2; q++) cross(feedX, ya - (ya - yb) * q / (m2 + 1), 4, red); };
@@ -6394,6 +6439,13 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
   };
   const ringPole = (y) => { page.drawCircle({ x: feedX, y, size: 6.5, borderColor: red, borderWidth: 1.1 }); cross(feedX, y, 3.8, red); };
   let tapWord = '';
+  const segs = ohLen ? turnSegs(i, ohLen) : null, turned = segs && segs.length > 1, hB = Math.min(80, w * 0.15);
+  const tapX = turned ? feedX + runWidth(segs, hB) : feedX;
+  const turnRun = (yTop, yBot) => {                    // the overhead stretch with its L turns, ending above the DP column
+    const lastH = segs.length % 2 === 0, end = pdfRun(page, tapX, yTop, segs, { vBudget: lastH ? (yTop - yBot) * 0.6 : (yTop - yBot), hBudget: hB, dir: -1, FB, span: App.settings.norms.span });
+    if (lastH) line(end.x, end.y, end.x, yBot, 1.4, true, red);
+    else if (end.y > yBot) line(end.x, end.y, end.x, yBot, 1.4, true, red);
+  };
   if (lm === 'UL') {                                   // S/S right below the existing line: a jumper only
     line(feedX, feedY, feedX, dpTop, 1.4, true, red);
     const my = (feedY + dpTop) / 2;
@@ -6403,20 +6455,26 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
     vCable(feedY - 6.5, dpTop);
     dim(feedY - 9, dpTop, [`${ugLen || '___'} MTR U/G CABLE`, `11 KV ${cableName}`, loop ? `+ ${loop} MTR LOOP` : '', `2 NOS O/D TERMINATION KIT${stj ? ', ' + stj + ' NOS STJ' : ''}`]);
   } else if (lm === 'OU') {                            // overhead first, then cable into the DP set
-    cross(feedX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
+    cross(tapX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
     const f2 = ohLen + ugLen > 0 ? Math.min(0.5, Math.max(0.32, ohLen / (ohLen + ugLen))) : 0.45, midY = feedY - (feedY - dpTop) * f2;
-    vLine(feedY, midY + 6.5, linePoles);
+    if (turned) turnRun(feedY, midY + 6.5); else vLine(feedY, midY + 6.5, linePoles);
     ringPole(midY); txt('CUT POINT', feedX + 22, midY - 2.5, 6.5, FB);
     vCable(midY - 6.5, dpTop);
-    dim(feedY - 6, midY + 6, [`${ohLen} MTR O/H LINE`, `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
+    if (turned) [`${ohLen} MTR O/H LINE`, `${linePoles} NOS PCC POLE, ${segs.length - 1} L TURN${segs.length > 2 ? 'S' : ''}`].forEach((t, k2) => txt(t, tapX + 12, (feedY + midY) / 2 + 2 - k2 * 9, k2 ? 7 : 8.5, k2 ? F : FB));
+    else dim(feedY - 6, midY + 6, [`${ohLen} MTR O/H LINE`, `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
     dim(midY - 8, dpTop, [`${ugLen} MTR U/G CABLE`, `11 KV ${cableName}`, loop ? `+ ${loop} MTR LOOP` : '']);
   } else {                                             // overhead line from the tapping
-    cross(feedX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
-    vLine(feedY, dpTop, linePoles);
-    dim(feedY - 6, dpTop, [`${ohLen || '___'} MTR O/H LINE`, '11 KV 3-PH', `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
+    cross(tapX, feedY, 5); tapWord = i.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE (CUT POINT)';
+    if (turned) {
+      turnRun(feedY, dpTop);
+      [`${ohLen} MTR O/H LINE`, '11 KV 3-PH', `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}, ${segs.length - 1} L TURN${segs.length > 2 ? 'S' : ''}`].forEach((t, k2) => txt(t, tapX + 12, (feedY + dpTop) / 2 + 8 - k2 * 9, k2 ? 7 : 8.5, k2 ? F : FB));
+    } else {
+      vLine(feedY, dpTop, linePoles);
+      dim(feedY - 6, dpTop, [`${ohLen || '___'} MTR O/H LINE`, '11 KV 3-PH', `${linePoles} NOS PCC POLE${dpn ? ' + ' + dpn + ' DP' : ''}`]);
+    }
   }
-  if (tapWord) txt(tapWord, feedX + 9, feedY + 7, 7, FB);
-  const fl = pdfSafe('EXISTING 11 KV ' + (s.feeder || '') + ' FEEDER'), flx = feedX + (tapWord ? FB.widthOfTextAtSize(pdfSafe(tapWord), 7) + 26 : 14);
+  if (tapWord) txt(tapWord, tapX + 9, feedY + 7, 7, FB);
+  const fl = pdfSafe('EXISTING 11 KV ' + (s.feeder || '') + ' FEEDER'), flx = tapX + (tapWord ? FB.widthOfTextAtSize(pdfSafe(tapWord), 7) + 26 : 14);
   let fs2 = 8; while (fs2 > 6 && FB.widthOfTextAtSize(fl, fs2) > x0 + w - flx - 4) fs2 -= 0.25;
   txt(fl, flx, feedY + 7, fs2, FB);
   // the new DP set where the line / cable lands: a box with its two poles
@@ -6518,7 +6576,7 @@ function shiftMap(page, F, FB, x0, y0, w, h, s, e) {
   if (ohLen) {                                          // overhead part: dotted red, poles at the bends and by the span
     const p = slice(0, fOH);
     for (let k = 0; k < p.length - 1; k++) line(p[k][0], p[k][1], p[k + 1][0], p[k + 1][1], 1.4, true, red);
-    try { np = num(buildLineParts({ htDist: ohLen, htPhase: i.htPhase, turns: i.turns, takeoff: 'P', withSS: false, withTF: false, fuse: false }, N).info.linePoles); } catch (er) { np = 0; }
+    try { np = num(buildLineParts(Object.assign({ htDist: ohLen, htPhase: i.htPhase, turns: i.turns, takeoff: 'P', withSS: false, withTF: false, fuse: false }, taOf(i)), N).info.linePoles); } catch (er) { np = 0; }
     np = Math.max(np || Math.ceil(ohLen / span) - 1, p.length - 2);
     const bends = p.slice(1, -1), free = Math.max(0, Math.min(np, 12) - bends.length);
     bends.forEach(c => cross(c[0], c[1], 4.5, red));
@@ -6589,7 +6647,7 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     page.drawText(s2, { x: al === 'c' ? x - wd / 2 : al === 'r' ? x - wd : x, y, size: sz || 8, font: ff, color: ink }); };
   const cross = (x, y, r, col) => { line(x - r, y - r, x + r, y + r, 1, false, col); line(x - r, y + r, x + r, y - r, 1, false, col); };
   const k = Math.min(1, h / 250);                            // squeeze the sketch when space is short
-  const cx = x0 + w * 0.42;                                  // the take-off pole sits left of centre
+  let cx = x0 + w * 0.42;                                    // the take-off pole sits left of centre (moves along an L turn)
   const fy = y0 + h - 26 * k;                                // existing feeder line
   line(x0 + 14, fy, x0 + w - 14, fy, 1.3);
   for (let x = x0 + 40; x < x0 + w - 30; x += 62) if (Math.abs(x - cx) > 20) cross(x, fy, 4);
@@ -6612,16 +6670,28 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     if (s.ul) txt(`JUMPER ${s.jumper} MTR`, cx + 14, y - 18 * k, 8);
     y -= 34 * k;
   } else if (s.ou && s.htLen) {                        // overhead line first, then the U/G cable
-    const bot = y - drop * 1.1, ohPoles = Math.max(0, s.poles - 1);
-    line(cx, y, cx, bot - 0.5, 1.4, true, red);
-    const np = Math.max(1, Math.min(ohPoles, 3));
-    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 1.1) * q / (np + 1), 4, red);
-    [`${s.htLen} MTR O/H LINE`, `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${ohPoles} NOS PCC POLE${s.dp ? ' + ' + s.dp + ' DP' : ''}`].forEach((t, i) => txt(t, cx + 16, y - 26 * k - i * 11, i ? 8 : 9, i ? F : FB));
+    let bot = y - drop * 1.1; const ohPoles = Math.max(0, s.poles - 1), x00 = cx;
+    if (s.segs && s.segs.length > 1) {                    // the overhead part turns where the L turns are
+      const lastH = s.segs.length % 2 === 0, end = pdfRun(page, cx, y, s.segs, { vBudget: drop * 1.1 - (lastH ? 10 : 0), hBudget: Math.min(80, w * 0.15), dir: -1, FB, span: App.settings.norms.span });
+      cx = end.x; bot = end.y; if (lastH) { line(cx, bot, cx, bot - 10, 1.4, true, red); bot -= 10; }
+    } else {
+      line(cx, y, cx, bot - 0.5, 1.4, true, red);
+      const np = Math.max(1, Math.min(ohPoles, 3));
+      for (let q = 1; q <= np; q++) cross(cx, y - (drop * 1.1) * q / (np + 1), 4, red);
+    }
+    [`${s.htLen} MTR O/H LINE`, `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${ohPoles} NOS PCC POLE${s.dp ? ' + ' + s.dp + ' DP' : ''}`].forEach((t, i) => txt(t, x00 + 16, y - 26 * k - i * 11, i ? 8 : 9, i ? F : FB));
     page.drawCircle({ x: cx, y: bot - 6, size: 6, borderColor: red, borderWidth: 1.1 }); cross(cx, bot - 6, 3.6, red);   // joins the line above and the cable below
     txt(s.toSS ? 'CUT POINT' : 'CUT POINTS (CROSSING)', cx - 10, bot - 9, 7, FB, 'r');
     const cTop = bot - 12, cBot = coil(cTop, 60 * k);
     [`${s.ugLen} MTR U/G CABLE`, `11 KV ${s.cable} XLPE${loopWord}`, `${s.out} NOS O/D TERMINATION KIT${s.stj ? ', ' + s.stj + ' NOS STJ' : ''}`].forEach((t, i) => txt(t, cx + 22, (cTop + cBot) / 2 + 8 - i * 11, i ? 8 : 9, i ? F : FB));
     y = cBot;
+  } else if (s.htLen && s.segs && s.segs.length > 1) {    // overhead line with its L turns, at the given distances
+    const lastH = s.segs.length % 2 === 0, x00 = cx;
+    const end = pdfRun(page, cx, y, s.segs, { vBudget: drop * 2 - (lastH ? 12 : 0), hBudget: Math.min(80, w * 0.15), dir: -1, FB, span: App.settings.norms.span });
+    const lab2 = `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${s.poles} NOS PCC POLE${s.dp ? ' + ' + s.dp + ' DP SET' : ''}, ${s.segs.length - 1} L TURN${s.segs.length > 2 ? 'S' : ''}`;
+    [`${s.htLen} MTR O/H LINE`, lab2].forEach((t, i) => txt(t, x00 + 16, y - 28 - i * 11, i ? 8 : 9, i ? F : FB));
+    cx = end.x; y = end.y;
+    if (lastH) { line(cx, y, cx, y - 12, 1.4, true, red); y -= 12; }
   } else if (s.htLen) {
     const bot = y - drop * 2;
     line(cx, y, cx, bot, 1.4, true, red);                   // proposed line: dotted, red
