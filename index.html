@@ -901,7 +901,7 @@ html[data-theme="dark"] .actbar{background:rgba(18,28,40,.88) !important}
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-feeder"></datalist><datalist id="dl-gss"></datalist><datalist id="dl-loc"></datalist>
 <script>
-const APP_VERSION = '05.10.2026 15:00';
+const APP_VERSION = '13.10.2026 18:00';
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
     Copyright (c) Microsoft Corporation. All rights reserved.
@@ -1013,7 +1013,7 @@ lattice36|33 KV S/C Lattice Structure 36 ft|5050|SET|35660.21|
 |33 KV D/C Lattice Structure 42 ft|5050|SET|45503.27|
 # Cross arms, brackets
 vcross11|11 KV V Cross Arm with Top Hamper & Clamps|5074|SET|978.81|77
-tophamper11|11 KV Top Hamper without Clamp|5074|NOS|218.33|
+tophamper11|11 KV Top Hamper without Clamp|5074|NOS|216.33|
 |33 KV V Cross Arm with Top Hamper & Clamps|5074|SET|1748.75|
 ch14|1.4 Mtr Channel Bracket with Clamp (Cut Point)|4992|SET|1092.99|65
 ch18|1.8 Mtr Channel Bracket with Clamp|4927|SET|1476.99|
@@ -2277,8 +2277,44 @@ function ladderSH(rows, opt) {
   return { a, b, c, LAB, DIS, CIV, civRow, ug, V, T1, OH, T2, ST, T3, nos, rate, TFS, C25, C50, C100, T4, GST, NET };
 }
 
-/* ---------- SIS / capacity augmentation (A proposed, B dismantled) ---------- */
+/* ---------- SIS / capacity augmentation (A proposed, B dismantled) ----------
+   Schemes (inp.scheme): 'aug' T/F change (default) · 'two' two T/F on one structure → one gets its own S/S ·
+   'ag' AG connections on LT → new 11 KV line, own T/F each, LT dismantled · 'split' two AG on one T/F → own T/F for one. */
+function ntaOf(i) { const o = {}; for (let k = 1; k <= 6; k++) if (i['nta' + k] != null) o['ta' + k] = i['nta' + k]; return o; }
+function buildSISScheme(inp, cat, N, sc) {
+  const NN = N || (typeof DEFAULT_NORMS === 'object' ? DEFAULT_NORMS : {}), rows = [];
+  const push = (key, q, blk, flag) => { const r = rowFromCat(cat, key); if (!r) return; r.q = q; r.blk = blk; r.flag = flag || ''; rows.push(r); };
+  const add = (parts, blk, flag, skip) => {
+    const tot = {}; ['ht', 'lt', 'ss'].forEach(c => Object.keys(parts[c] || {}).forEach(k => { tot[k] = r3((tot[k] || 0) + num(parts[c][k])); }));
+    Object.keys(tot).sort((x, y) => orderIndex(x) - orderIndex(y)).forEach(k => { if (tot[k] > 0 && !(skip && skip.test(k))) {
+      const ex = rows.find(r => r.key === k && r.blk === blk); if (ex) ex.q = r3(num(ex.q) + tot[k]); else push(k, tot[k], blk, flag); } });
+  };
+  const ph = inp.newPh === '1' ? '1' : '3', kva = num(inp.newKVA) || (ph === '1' ? 10 : 25), mount = ph === '3' ? (inp.newMount === 'S' ? 'S' : 'D') : 'S';
+  const ht = num(inp.nlHT), line = Object.assign({ htPhase: ph, turns: num(inp.nlTurns), takeoff: inp.nlTake === 'N' ? 'N' : 'P', tfKVA: kva, mount, withSS: true }, ntaOf(inp));
+  let first = null, nTF = 0;
+  if (sc === 'two') {                                   // the same T/F re-erected on its own S/S: not taken in either block
+    const ul = (inp.ssAt || 'UL') !== 'L' || !ht;
+    first = buildLineParts(Object.assign({}, line, { htDist: ul ? 0 : ht, htMode: ul ? 'UL' : '', withTF: false }), NN);
+    add(first, 'A', '');
+  } else {                                              // a new T/F (or more) with its S/S, fed by the new 11 KV line
+    nTF = sc === 'split' ? 1 : Math.max(1, Math.min(10, Math.floor(num(inp.agN) || 1)));
+    first = buildLineParts(Object.assign({}, line, { htDist: ht, withTF: true }), NN);
+    add(first, 'A', '');
+    for (let k = 1; k < nTF; k++) add({ ss: buildLineParts({ htDist: 0, htPhase: ph, withSS: true, tfKVA: kva, mount, withTF: true }, NN).ss }, 'A', '');
+    if (inp.oldKeep === 'remove' && num(inp.oldKVA)) {
+      const oPh = inp.oldPh === '1' ? '1' : '3', oK = num(inp.oldKVA), oM = oPh === '3' ? (inp.oldMount === 'S' ? 'S' : 'D') : 'S';
+      push(tfKey(oPh, oK), 1, 'B', 'T'); push(BAND_KEY[ssBand(oPh, oK, oM)], 1, 'B', 'M');
+    }
+  }
+  if (num(inp.dlHT) > 0 || num(inp.dlLT) > 0) {        // old line taken down: poles, stays, earthing and nut-bolt are not taken back
+    const old = buildLineParts({ htDist: num(inp.dlHT), htPhase: inp.dlPh === '1' ? '1' : '3', turns: num(inp.dlTurns), takeoff: 'P',
+      withSS: false, ltDist: num(inp.dlLT), ltPhase: inp.dlLTPh === '1' ? '1' : '3' }, NN);
+    add(old, 'B', 'M', /^pole|stay|earthing|nutbolt/);
+  }
+  return { rows, info: { scheme: sc, sameTF: sc === 'two', oldBand: '', newBand: ssBand(ph, kva, mount), newLine: first && first.info, nTF } };
+}
 function buildSIS(inp, cat, N) {
+  if (inp.scheme && inp.scheme !== 'aug') return buildSISScheme(inp, cat, N, inp.scheme);
   const oPh = inp.oldPh === '1' ? '1' : '3', nPh = inp.newPh === '1' ? '1' : '3';
   const oK = num(inp.oldKVA), nK = num(inp.newKVA);
   const oM = oPh === '3' ? (inp.oldMount === 'S' ? 'S' : 'D') : 'S';
@@ -2300,8 +2336,8 @@ function buildSIS(inp, cat, N) {
   };
   let newLine = null, oldLine = null;
   if (num(inp.nlHT) > 0 || num(inp.nlLT) > 0) {           // new line for the work
-    newLine = buildLineParts({ htDist: num(inp.nlHT), htPhase: inp.nlPh === '1' ? '1' : '3', turns: num(inp.nlTurns), takeoff: inp.nlTake === 'N' ? 'N' : 'P',
-      withSS: false, ltDist: num(inp.nlLT), ltPhase: inp.nlLTPh === '1' ? '1' : '3' }, NN);
+    newLine = buildLineParts(Object.assign({ htDist: num(inp.nlHT), htPhase: inp.nlPh === '1' ? '1' : '3', turns: num(inp.nlTurns), takeoff: inp.nlTake === 'N' ? 'N' : 'P',
+      withSS: false, ltDist: num(inp.nlLT), ltPhase: inp.nlLTPh === '1' ? '1' : '3' }, ntaOf(inp)), NN);
     add(newLine, 'A', '');
   }
   if (num(inp.dlHT) > 0 || num(inp.dlLT) > 0) {           // old line taken down: poles, stays, earthing and nut-bolt are not taken back
@@ -3554,7 +3590,10 @@ function newEstimate(type) {
 /* vermiculite rate for a new estimate: every U/G cable in these estimates is 11 KV, so the 11 KV Rate list figure (ACR), else 335.39 */
 function vermDefault() { const it = App.cat && App.cat.byKey && App.cat.byKey.vermic; return (it && num(it.rate)) || 335.39; }
 function sisTitle(i) {
-  const o = `${i.oldKVA} KVA ${i.oldPh}-Ph T/F`, n = `${i.newKVA} KVA ${i.newPh}-Ph T/F`;
+  const o = `${i.oldKVA} KVA ${i.oldPh}-Ph T/F`, n = `${i.newKVA} KVA ${i.newPh}-Ph T/F`, sc = i.scheme || 'aug';
+  if (sc === 'two') return `Estimate for separate S/S for one of two transformers on a common structure (${n})`;
+  if (sc === 'ag') { const k = Math.max(1, Math.floor(num(i.agN) || 1)); return `Estimate for 11 KV line in place of LT line for AG connections with ${k} Nos ${n}`; }
+  if (sc === 'split') return `Estimate for separate ${n} for an AG connection (two AG connections on one T/F)`;
   if (i.oldPh === i.newPh && +i.oldKVA === +i.newKVA) return `Estimate for Shifting of ${o} from ${i.oldMount === 'S' ? 'Single Pole' : 'Double Pole'} to ${i.newMount === 'S' ? 'Single Pole' : 'Double Pole'} S/S`;
   if (i.oldPh === i.newPh && +i.newKVA > +i.oldKVA) return `Estimate for Capacity Augmentation of ${i.oldKVA} KVA to ${i.newKVA} KVA ${i.newPh}-Ph T/F`;
   return `Estimate for Replacement of ${o} with ${n}`;
@@ -4029,7 +4068,55 @@ function cardDismantle(e) {
     ${stepper('T/F shifted (Rs.' + App.settings.norms.tfShiftRate + ' each)', 'opt.tfShift', o.tfShift || 0)}${sel('T/F deposited in store (50% credit)', 'opt.depTFKey', o.depTF ? o.depTF.key : '', tfOptions())}</div>
     <p class="hint" style="margin-top:8px">Re-used quantity is never assumed. Type it against the item in the material list.</p></div>`;
 }
+/* turn boxes for any line in the form: count key, length, prefix of the distance keys */
+function turnBoxesK(i, tKey, d, pre) {
+  const t = Math.min(6, Math.max(0, Math.floor(num(i[tKey])))); if (!t) return '';
+  const p = { turns: t }; for (let k = 1; k <= t; k++) p['ta' + k] = i[pre + k];
+  const typed = [...Array(t)].some((_, k) => i[pre + (k + 1)] != null && i[pre + (k + 1)] !== ''), sg = turnSegs(p, d);
+  return [...Array(t)].map((_, k) => fld(`L-turn ${k + 1} at (m from the start)`, `inp.${pre}${k + 1}`, i[pre + (k + 1)], { n: 1, ph: 'e.g. ' + (Math.round(d * (k + 1) / (t + 1)) || 50 * (k + 1)) })).join('')
+    + (typed && !sg ? '<p class="hint warnline span2">Turn distances must go up in order and stay below the line length. Until then poles are counted as length ÷ span.</p>' : '')
+    + (sg ? `<p class="hint span2">Stretches: ${sg.map(v => v + ' m').join(' + ')}. Poles are counted stretch by stretch.</p>` : '');
+}
+const SIS_HINT = {
+  aug: 'The existing transformer is replaced by a new one (capacity change, phase change, or shifting single pole ↔ double pole).',
+  two: 'Two transformers stand on one structure. One of them goes to its own new S/S — under the existing line or at the end of a new 11 KV line. The same transformer is re-erected, so it is not taken in either block.',
+  ag: 'AG connections run on the LT line. A new 11 KV line is erected in its place, each AG connection gets its own transformer and S/S, and the LT line is dismantled.',
+  split: 'One transformer feeds two AG connections. The second one gets its own transformer and S/S on a short new 11 KV line; the LT stretch that fed it is dismantled.'
+};
 function cardSIS(e) {
+  const i = e.inp, sc = i.scheme || 'aug';
+  const schemeCard = `<div class="card"><div class="h3">Scheme</div><div class="grid2">${seg('Kind of work', 'inp.scheme', sc, [['aug', 'T/F change'], ['two', '2 T/F on 1 structure'], ['ag', 'AG on LT → 11 KV'], ['split', '2 AG on 1 T/F']], 'span2')}</div>
+    <p class="hint">${SIS_HINT[sc] || ''}</p></div>`;
+  if (sc !== 'aug') return schemeCard + cardSISScheme(e, sc);
+  return schemeCard + cardSISAug(e);
+}
+function cardSISScheme(e, sc) {
+  const i = e.inp, ph = i.newPh === '1' ? '1' : '3';
+  const tfSide = (title, extra) => `<div class="card"><div class="h3">${title}</div><div class="grid2">
+     ${seg('Phase', 'inp.newPh', ph, [['3', '3-Ph'], ['1', '1-Ph']])}${sel('Transformer', 'inp.newKVA', i.newKVA, TF_KVA[ph].map(k => [k, k + ' KVA']))}
+     ${ph === '3' ? seg('Mounting', 'inp.newMount', i.newMount || 'D', [['D', 'Double pole'], ['S', 'Single pole']], 'span2') : ''}${extra || ''}</div></div>`;
+  const lineCard = (title, hint) => `<div class="card"><div class="h3">${title}</div><div class="grid2">
+     ${fld('11 KV line (metre)', 'inp.nlHT', i.nlHT, { n: 1, ph: '0 if none' })}${stepper('L turns', 'inp.nlTurns', i.nlTurns || 0)}
+     ${seg('Line starts from', 'inp.nlTake', i.nlTake || 'P', [['P', 'Existing pole'], ['N', 'New point']], 'span2')}
+     ${turnBoxesK(i, 'nlTurns', num(i.nlHT), 'nta')}</div><p class="hint">${hint} The line is ${ph === '1' ? 'single' : 'three'}-phase like the transformer.</p></div>`;
+  const ltDis = (title, hint) => `<div class="card" style="border-left:4px solid #8A99A8"><div class="h3">${title}</div><div class="grid2">
+     ${fld('LT line to be dismantled (metre)', 'inp.dlLT', i.dlLT, { n: 1, ph: '0 if none' })}${seg('LT phase', 'inp.dlLTPh', i.dlLTPh || '3', [['3', '3-Ph'], ['1', '1-Ph']])}</div>
+     <p class="hint">${hint} Block B: 10% dismantling charge and 25% credit; poles, stays, earthing and nut &amp; bolt are not taken back.</p></div>`;
+  const oPh = i.oldPh === '1' ? '1' : '3';
+  const oldCard = `<div class="card"><div class="h3">The existing transformer</div><div class="grid2">${seg('It', 'inp.oldKeep', i.oldKeep || 'keep', [['keep', 'Stays as it is'], ['remove', 'Is taken out']], 'span2')}
+     ${i.oldKeep === 'remove' ? seg('Phase', 'inp.oldPh', oPh, [['3', '3-Ph'], ['1', '1-Ph']]) + sel('Transformer', 'inp.oldKVA', i.oldKVA, TF_KVA[oPh].map(k => [k, k + ' KVA'])) + (oPh === '3' ? seg('Mounting', 'inp.oldMount', i.oldMount || 'D', [['D', 'Double pole'], ['S', 'Single pole']], 'span2') : '') : ''}</div>
+     ${i.oldKeep === 'remove' ? '<p class="hint">The old transformer goes in block B with 50% credit and its S/S structure with 25%.</p>' : '<p class="hint">Nothing of the existing transformer is taken.</p>'}</div>`;
+  if (sc === 'two') return tfSide('Transformer moving to its own S/S', seg('New S/S stands', 'inp.ssAt', i.ssAt || 'UL', [['UL', 'Under the existing line'], ['L', 'At the end of a new line']], 'span2'))
+    + ((i.ssAt || 'UL') === 'L' ? lineCard('11 KV line to the new S/S', 'Your span, take-off and turn rules; the last span lands on the new S/S.') : '')
+    + `<p class="hint">The other transformer stays on the old structure. Under the line, the new S/S takes the under-line set (V-cross and pins only there); at the end of a line it takes termination discs instead.</p>`;
+  if (sc === 'ag') return tfSide('New transformers for the AG connections', fld('AG connections getting their own T/F (Nos)', 'inp.agN', i.agN || 1, { n: 1 }))
+    + lineCard('New 11 KV line in place of the LT line', 'Block A with your span, DP, turn and nut-bolt rules; the line lands on the last new S/S, the others hang off it with the same S/S set.')
+    + ltDis('LT line to be dismantled', 'The LT line that fed the AG connections.') + oldCard;
+  return tfSide('New transformer for the second AG connection')
+    + lineCard('11 KV line to the new S/S', 'From the nearest pole of the 11 KV line to the new S/S near the AG connection.')
+    + ltDis('LT line no longer needed', 'The LT stretch that fed this connection from the old transformer.') + oldCard;
+}
+function cardSISAug(e) {
   const i = e.inp;
   const side = (lbl, p) => { const ph = i[p + 'Ph']; return `<div class="h3" style="margin-top:6px">${lbl}</div><div class="grid2">
     ${seg('Phase', `inp.${p}Ph`, ph, [['3', '3-Ph'], ['1', '1-Ph']])}${sel('Transformer', `inp.${p}KVA`, i[p + 'KVA'], TF_KVA[ph].map(k => [k, k + ' KVA']))}
@@ -4040,6 +4127,7 @@ function cardSIS(e) {
   <div class="card"><div class="h3">New line (if the work needs one)</div><div class="grid2">
     ${fld('11 KV line (metre)', 'inp.nlHT', i.nlHT, { n: 1, ph: '0 if none' })}${seg('Phase', 'inp.nlPh', i.nlPh || '3', [['3', '3-Ph'], ['1', '1-Ph']])}
     ${stepper('L turns', 'inp.nlTurns', i.nlTurns || 0)}${seg('Line starts from', 'inp.nlTake', i.nlTake || 'P', [['P', 'Existing pole'], ['N', 'New point']])}
+    ${turnBoxesK(i, 'nlTurns', num(i.nlHT), 'nta')}
     ${fld('LT AB cable (metre)', 'inp.nlLT', i.nlLT, { n: 1, ph: '0 if none' })}${seg('LT phase', 'inp.nlLTPh', i.nlLTPh || '3', [['3', '3-Ph'], ['1', '1-Ph']])}</div>
     <p class="hint">Goes in block A with your span, DP and nut-bolt rules, like a new connection.</p></div>
   <div class="card" style="border-left:4px solid #8A99A8"><div class="h3">Line to be dismantled</div><div class="grid2">
@@ -4646,7 +4734,7 @@ function onClick(ev) {
   if (d.new) { startNew(d.new); return; }
   if (d.open) { if (App.sheetOpen) { closeSheet(); setTimeout(() => openEstimate(d.open), 120); } else openEstimate(d.open); return; }
   if (d.seg) { setPath(App.est, d.seg, d.val); onSegChange(d.seg); return; }
-  if (d.step) { const cur = num(getPath(App.est, d.step)); const v = Math.max(0, cur + num(d.d)); setPath(App.est, d.step, v); const inp = t.parentNode.querySelector('input'); if (inp) { inp.value = v; onBind(inp); } if (d.step === 'inp.turns' && typeof rerenderKeepScroll === 'function') rerenderKeepScroll(); return; }
+  if (d.step) { const cur = num(getPath(App.est, d.step)); const v = Math.max(0, cur + num(d.d)); setPath(App.est, d.step, v); const inp = t.parentNode.querySelector('input'); if (inp) { inp.value = v; onBind(inp); } if (/turns$/i.test(d.step) && typeof rerenderKeepScroll === 'function') rerenderKeepScroll(); return; }
   if (d.key && t.classList.contains('pick')) { addRow(d.key); return; }
   if (d.quick) { openQuick(d.quick); return; }
   if (d.preset) { const e = App.est; applyPreset(e, d.preset); if (e.built) e.stale = true; touch(); rerenderKeepScroll(); return; }
@@ -4734,6 +4822,7 @@ function onSegChange(path) {
   if (path === 'inp.phase') { const ks = TF_KVA[e.inp.phase]; if (!ks.includes(+e.inp.tfKVA)) e.inp.tfKVA = e.inp.phase === '1' ? 10 : 16; e.inp.ltPhase = e.inp.phase; }
   if (path === 'inp.dPhase') { const ks = TF_KVA[e.inp.dPhase]; if (!ks.includes(+e.inp.dKVA)) e.inp.dKVA = e.inp.dPhase === '1' ? 5 : 25; }
   if (path === 'inp.htPhase') { const ks = TF_KVA[e.inp.htPhase]; if (!ks.includes(+e.inp.tfKVA)) e.inp.tfKVA = e.inp.htPhase === '1' ? 5 : 25; }
+  if (path === 'inp.oldPh' && !num(e.inp.oldKVA)) e.inp.oldKVA = e.inp.oldPh === '1' ? 10 : 25;
   if (path === 'inp.oldPh' || path === 'inp.newPh') { const p = path.slice(4, 7); const ks = TF_KVA[e.inp[p + 'Ph']]; if (!ks.includes(+e.inp[p + 'KVA'])) e.inp[p + 'KVA'] = e.inp[p + 'Ph'] === '1' ? 5 : 25; }
   if (e.type === 'sis' && e.head.titleAuto !== false) e.head.title = sisTitle(e.inp);
   if (e.built) e.stale = true;
@@ -6204,29 +6293,42 @@ function sldInfo(e) {
   const ht = e.type === 'ht';
   const ug = i.htMode === 'UG' || (ht && num(i.cableLen) > 0);
   const ou = !ht && i.htMode === 'OU';
-  const ul = i.htMode === 'UL' || (ht && !num(i.htDist));
+  const ul = e.type === 'sis' ? (i.scheme === 'two' && ((i.ssAt || 'UL') !== 'L' || !num(i.nlHT))) : (i.htMode === 'UL' || (ht && !num(i.htDist)));
   const ph = (e.type === 'sis' ? i.newPh : e.type === 'cm' ? i.phase : i.htPhase) === '1' ? '1' : '3';
   let kva = ht ? (i.withTF === true ? num(i.tfKVA) : 0) : (i.withSS !== false ? num(i.tfKVA) : 0), oldKVA = 0, oldPh = '';
-  if (e.type === 'sis') { kva = num(i.newKVA); oldKVA = num(i.oldKVA); oldPh = i.oldPh === '1' ? '1' : '3'; }
+  const sisSc = e.type === 'sis' ? (i.scheme || 'aug') : '';
+  if (e.type === 'sis') { kva = num(i.newKVA); oldKVA = sisSc === 'aug' ? num(i.oldKVA) : 0; oldPh = i.oldPh === '1' ? '1' : '3'; }
   const mount = ph === '1' ? 'S' : ((e.type === 'sis' ? i.newMount : i.mount) === 'S' ? 'S' : 'D');
-  const htLen = ht ? (num(i.cableLen) || num(i.htDist)) : ug ? num(i.ugLen) : num(i.htDist);
+  const htLen = ht ? (num(i.cableLen) || num(i.htDist)) : e.type === 'sis' ? (sisSc === 'two' && (i.ssAt || 'UL') !== 'L' ? 0 : num(i.nlHT)) : ug ? num(i.ugLen) : num(i.htDist);
+  const tk = e.type === 'sis' ? Object.assign({ turns: i.nlTurns, takeoff: i.nlTake }, ntaOf(i)) : Object.assign({ turns: i.turns, takeoff: i.takeoff }, taOf(i));
   const N = App.settings.norms;
   let info = e.info;
   if (!info || info.linePoles == null) {
-    try { info = buildLineParts({ htDist: ug ? 0 : htLen, htPhase: ph, turns: i.turns, takeoff: i.takeoff, withSS: i.withSS !== false,
-      tfKVA: kva, mount, ltDist: num(i.ltDist) || num(i.ltCable), ltPhase: i.ltPhase }, N).info; } catch (er) { info = {}; }
+    try { info = buildLineParts(Object.assign({ htDist: ug ? 0 : htLen, htPhase: ph, withSS: i.withSS !== false,
+      tfKVA: kva, mount, ltDist: num(i.ltDist) || num(i.ltCable), ltPhase: i.ltPhase }, tk), N).info; } catch (er) { info = {}; }
   }
-  return { segs: (!ug || ou || ht) ? turnSegs(i, num(i.htDist)) : null, loop: i.ugLoop == null || i.ugLoop === '' ? null : num(i.ugLoop), ugTap: i.ugTap !== false, takeoff: i.takeoff || 'P', toSS: i.ugToSS !== false,
-    ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
+  return { tot: sldTotals(e), nTF: e.type === 'sis' && (sisSc === 'ag') ? Math.max(1, Math.floor(num(i.agN) || 1)) : 0, ssNote: sisSc === 'two' ? '(SHIFTED FROM THE COMMON STRUCTURE)' : sisSc === 'ag' || sisSc === 'split' ? '(NEW, FOR AG CONNECTION)' : '',
+    segs: e.type === 'sis' ? turnSegs(tk, htLen) : (!ug || ou || ht) ? turnSegs(i, num(i.htDist)) : null, loop: i.ugLoop == null || i.ugLoop === '' ? null : num(i.ugLoop), ugTap: i.ugTap !== false, takeoff: (e.type === 'sis' ? i.nlTake : i.takeoff) || 'P', toSS: i.ugToSS !== false,
+    ug, ou, ul, jumper: num(i.jumper) || (ph === '1' ? 10 : 15), ph, kva, oldKVA, oldPh, mount, htLen, info, takeoff2: tk.takeoff, ltLen: num(i.ltDist) || num(i.ltCable), ltPh: i.ltPhase === '1' ? '1' : '3',
     cable: i.ugSize === '120' ? '3C x 120 sqmm' : '3C x 185 sqmm', out: i.ugOut == null ? 2 : num(i.ugOut), stj: num(i.ugStj), inn: num(i.ugIn),
     ht, ugLen: ht ? num(i.cableLen) : num(i.ugLen),
-    poles: ht ? rowQty(e, 'pole9_200', 'ht', 2) : ug ? 0 : rowQty(e, 'pole9_200', 'ht', num(info.linePoles) + num(info.dp)), dp: num(info.dp),
-    ssPoles: rowQty(e, 'pole9_200', 'ss', num(info.ssPoles)), ltPoles: rowQty(e, 'pole9_200', 'lt', num(info.ltPoles)), type: e.type, dis: e.type === 'sh' ? num(i.dDist) : 0,
+    poles: ht ? rowQty(e, 'pole9_200', 'ht', 2) : e.type === 'sis' ? num(info.linePoles) + num(info.dp) : ug ? 0 : rowQty(e, 'pole9_200', 'ht', num(info.linePoles) + num(info.dp)), dp: num(info.dp),
+    ssPoles: e.type === 'sis' ? (ph === '3' && mount === 'D' ? 2 : 1) : rowQty(e, 'pole9_200', 'ss', num(info.ssPoles)), ltPoles: rowQty(e, 'pole9_200', 'lt', num(info.ltPoles)), type: e.type, dis: e.type === 'sh' ? num(i.dDist) : 0,
     preset: (e.opt && e.opt.preset) || '',
     canDraw: !!(ht || e.type === 'sh' || htLen > 0 || kva > 0 || (e.type === 'sis' && kva)), applicant: h.applicant || '', load: h.load || '', locality: h.locality || '', feeder: h.feeder || '', gss: h.gss || '' };
 }
 function sldWork(e) {
   const s = sldInfo(e), p = [];
+  if (e.type === 'sis' && (e.inp.scheme || 'aug') !== 'aug') {
+    const i2 = e.inp, sc = i2.scheme, tf = `${s.kva} KVA ${s.ph === '1' ? '1-Phase' : '3-Phase'}`, pole = s.mount === 'D' ? 'double pole' : 'single pole';
+    if (sc === 'two') { p.push(`One of the two transformers on the common structure (${tf}) is shifted to its own ${pole} S/S ${s.ul ? 'under the existing 11 KV line' : `fed by ${num(i2.nlHT)} Mtr new 11 KV line${s.poles ? ` on ${s.poles} Nos PCC poles` : ''}`}`); return p; }
+    const k = sc === 'split' ? 1 : Math.max(1, Math.floor(num(i2.agN) || 1));
+    if (num(i2.nlHT)) p.push(`Erection of ${num(i2.nlHT)} Mtr 11 KV ${s.ph === '1' ? 'single' : 'three'} phase line${s.poles ? ` on ${s.poles} Nos PCC poles` : ' (one span, straight on to the S/S)'}${sc === 'ag' ? ' in place of the LT line' : ''}`);
+    p.push(`${k} Nos new ${tf} distribution transformer${k > 1 ? 's' : ''} on separate ${pole} S/S for the AG connection${k > 1 ? 's' : ''}`);
+    if (num(i2.dlLT)) p.push(`Dismantling of ${num(i2.dlLT)} Mtr LT line`);
+    p.push(i2.oldKeep === 'remove' && num(i2.oldKVA) ? `The existing ${num(i2.oldKVA)} KVA transformer is taken out` : 'The existing transformer is left as it is');
+    return p;
+  }
   if (e.type === 'sis') { p.push(`Replacement of the existing ${s.oldKVA} KVA ${s.oldPh === '1' ? '1-Phase' : '3-Phase'} distribution transformer with a ${s.kva} KVA ${s.ph === '1' ? '1-Phase' : '3-Phase'} transformer on ${s.mount === 'D' ? 'double' : 'single'} pole structure`); return p; }
   if (e.type === 'sh') { const d = e.inp || {};
     if (num(d.dDist)) p.push(`Dismantling of ${num(d.dDist)} Mtr existing 11 KV line between the points where the new line takes off and joins back (A to B)`);
@@ -6287,6 +6389,17 @@ function sldNotes(e, extra) {
       `The site has been inspected. ${x.reason || 'Supply at the applicant premises is not possible from the existing network, therefore the work proposed below is necessary.'}`,
       `Proposed work: ${w.length ? w.join(', ') + '.' : '____'} The cost is chargeable to the applicant and the material will be provided by the Nigam.`,
       `Submitted for approval and issue of demand note along with the fixed charges.`];
+  }
+  if (e.type === 'sis' && (e.inp.scheme || 'aug') !== 'aug') {
+    const i2 = e.inp, sc = i2.scheme, at = s.locality ? ' at ' + s.locality : '';
+    const first = sc === 'two' ? `Two distribution transformers${at} are mounted on one common structure, which is unsafe and hampers maintenance of either transformer.`
+      : sc === 'ag' ? `Agriculture connections${at} are being fed through a long LT line, giving low voltage, high line losses and frequent faults.`
+      : `The existing transformer${at} feeds two agriculture connections and is not able to give proper voltage to both of them.`;
+    const why = sc === 'two' ? 'One transformer is to be shifted to its own separate S/S.'
+      : sc === 'ag' ? 'An 11 KV line in place of the LT line, with a separate transformer for each agriculture connection, is necessary.'
+      : 'A separate transformer for the second agriculture connection is necessary.';
+    return [first, `11 KV ${s.feeder || '____'} feeder of 33/11 KV GSS ${s.gss || '____'} is a ${x.supply || (sc === 'two' ? '24 hour supply' : 'block hour supply')} feeder.`,
+      `The site has been inspected. ${x.reason || why}`, `Proposed work: ${w.join(', ')}.`, `Submitted for approval.`];
   }
   if (e.type === 'sis') return [
     `The existing ${s.oldKVA} KVA ${s.oldPh === '1' ? '1-Phase' : '3-Phase'} transformer${s.locality ? ' at ' + s.locality : ''} is overloaded / not able to meet the connected load of the area.`,
@@ -6381,8 +6494,8 @@ function pdfRun(page, x, y, segs, o) {
     const vert = k % 2 === 0, L = vert ? Math.max(16, o.vBudget * len / vSum) : Math.max(28, o.hBudget * len / hSum);
     const nx = vert ? px : px + o.dir * L, ny = vert ? py - L : py;
     ln(px, py, nx, ny);
-    const show = Math.min(Math.max(1, Math.ceil(len / span - 1e-9)) - 1, 4);
-    for (let q = 1; q <= show; q++) { const t = q / (show + 1); cr(px + (nx - px) * t, py + (ny - py) * t, 3.6); }
+    const show = Math.min(Math.max(1, Math.ceil(len / span - 1e-9)) - 1, poleFit(L));
+    for (let q = 1; q <= show; q++) { const t = q / (show + 1); cr(px + (nx - px) * t, py + (ny - py) * t, Math.max(2.4, Math.min(3.6, L / (show + 1) * 0.34))); }
     if (k < segs.length - 1) { cr(nx, ny, 4.8); tx('L' + (k + 1), nx + (vert ? (o.dir < 0 ? 6 : -16) : 4), ny + (vert ? -10 : 5), 6.5, o.FB); }
     const lab = pdfSafe(`${len} M`), wd = o.FB.widthOfTextAtSize(lab, 7.5);
     if (vert) tx(lab, px - 6 - wd, (py + ny) / 2 - 3, 7.5, o.FB); else tx(lab, (px + nx) / 2 - wd / 2, py + 5, 7.5, o.FB);
@@ -6390,6 +6503,49 @@ function pdfRun(page, x, y, segs, o) {
   });
   return { x: px, y: py };
 }
+/* proposed 11 KV O/H length, LT length, U/G cable metres and the new PCC poles, all as the estimate has them */
+function sldTotals(e) {
+  const i = e.inp || {}, t = { oh: 0, lt: 0, cable: 0, poles: 0 }, CAB = /^c(11|33)_/;
+  if (e.type === 'ht') {
+    const lm = i.lineMode || (num(i.htDist) > 0 ? 'OH' : 'UL');
+    t.oh = (lm === 'OH' || lm === 'OU') ? num(i.htDist) : 0;
+    Object.values(e.rows || {}).forEach(list => (list || []).forEach(r => { if (/^pole/.test(r.key)) t.poles += num(r.q); if (CAB.test(r.key)) t.cable += num(r.q); }));
+  } else if (e.type === 'sis') {
+    t.oh = (i.scheme === 'two' && (i.ssAt || 'UL') !== 'L') ? 0 : num(i.nlHT); t.lt = num(i.nlLT);
+    (e.rows || []).forEach(r => { if (r.blk === 'A' && /^pole/.test(r.key)) t.poles += num(r.q); });
+  } else {
+    const m = i.htMode || 'OH'; t.oh = (m === 'OH' || m === 'OU') ? num(i.htDist) : 0; t.lt = num(i.ltDist);
+    const cols = e.type === 'sh' ? ['req'] : ['lt', 'ht', 'ss'];
+    (e.rows || []).forEach(r => { const q = r.q || {}; cols.forEach(c => { const v = num(q[c]); if (!v) return; if (/^pole/.test(r.key)) t.poles += v; if (CAB.test(r.key)) t.cable += v; }); });
+  }
+  Object.keys(t).forEach(k => { t[k] = r3(t[k]); });
+  return t;
+}
+/* the key under a diagram: symbol + words, flowing on one or two rows, with what the estimate holds */
+function sldLegend(page, F, x0, y0, w, items) {
+  const ink = PDFLib.rgb(0, 0, 0), red = PDFLib.rgb(0.80, 0.10, 0.08), sz = 7;
+  const ln = (a, b, c, d, t, col, dash) => page.drawLine(Object.assign({ start: { x: a, y: b }, end: { x: c, y: d }, thickness: t, color: col }, dash ? { dashArray: PDF_DOT } : {}));
+  const cr = (cx, cy, r, col) => { ln(cx - r, cy - r, cx + r, cy + r, 1, col); ln(cx - r, cy + r, cx + r, cy - r, 1, col); };
+  const lay = [], right = x0 + w - 4; let x = x0 + 14, row = 0;
+  items.filter(Boolean).forEach(it => {
+    const t = pdfSafe(it.t), need = (it.s ? 30 : 0) + F.widthOfTextAtSize(t, sz) + 16;
+    if (x + need > right && x > x0 + 14) { if (it.opt) return; x = x0 + 14; row++; }     // an optional note is left out rather than start a row
+    lay.push({ it, t, x, row }); x += need;
+  });
+  const rows = Math.max(...lay.map(l => l.row), 0);
+  lay.forEach(({ it, t, x, row }) => {
+    const y = y0 + 8 + (rows - row) * 11, sx = x;
+    if (it.s === 'line') ln(sx, y, sx + 22, y, 1.2, ink);
+    else if (it.s === 'dot') ln(sx, y, sx + 22, y, 1.4, red, true);
+    else if (it.s === 'coil') pdfCoil(page, sx, y, sx + 20, y, { pitch: 8, amp: 4, color: red });
+    else if (it.s === 'cross') cr(sx + 9, y, 4, it.red ? red : ink);
+    else if (it.s === 'ring') { page.drawCircle({ x: sx + 9, y, size: 6, borderColor: red, borderWidth: 1 }); cr(sx + 9, y, 3.5, red); }
+    else if (it.s === 'cut') { page.drawRectangle({ x: sx + 2.5, y: y - 6.5, width: 13, height: 13, borderColor: red, borderWidth: 1.1 }); cr(sx + 9, y, 4, red); }
+    page.drawText(t, { x: sx + (it.s ? 30 : 0), y: y - 3, size: sz, font: F, color: it.red && !it.s ? red : ink });
+  });
+}
+/* how many pole marks fit on a stretch without running into each other */
+function poleFit(px) { return Math.max(0, Math.floor(px / 6) - 1); }
 function runWidth(segs, hBudget) {
   const hSum = segs.filter((_, k) => k % 2).reduce((a, b) => a + b, 0) || 1;
   return segs.reduce((s2, len, k) => s2 + (k % 2 ? Math.max(28, hBudget * len / hSum) : 0), 0);
@@ -6430,7 +6586,7 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
   [tapX0 + 70, tapX0 + 150, tapX0 + 230].filter(px => px < lineEnd - 10).forEach(px => cross(px, feedY, 4.5));
   const ring = (x, y) => page.drawCircle({ x, y, size: 3.1, borderColor: ink, borderWidth: 0.9 });
   const vCable = (ya, yb) => pdfCoil(page, feedX, ya, feedX, yb, { color: red });
-  const vLine = (ya, yb, np) => { line(feedX, ya, feedX, yb, 1.4, true, red); const m2 = Math.max(0, Math.min(np, 5)); for (let q = 1; q <= m2; q++) cross(feedX, ya - (ya - yb) * q / (m2 + 1), 4, red); };
+  const vLine = (ya, yb, np) => { line(feedX, ya, feedX, yb, 1.4, true, red); const m2 = Math.max(0, Math.min(np, poleFit(ya - yb))); for (let q = 1; q <= m2; q++) cross(feedX, ya - (ya - yb) * q / (m2 + 1), Math.max(2.4, Math.min(4, (ya - yb) / (m2 + 1) * 0.34)), red); };
   const dim = (ya, yb, words) => {                    // a dimension line with arrows and the length written beside it
     const dx = feedX + 15; line(dx, ya, dx, yb, 0.7);
     line(dx - 2.5, ya - 4, dx, ya, 0.7); line(dx + 2.5, ya - 4, dx, ya, 0.7); line(dx - 2.5, yb + 4, dx, yb, 0.7); line(dx + 2.5, yb + 4, dx, yb, 0.7);
@@ -6520,12 +6676,13 @@ function htMap(page, F, FB, x0, y0, w, h, s, e) {
   txt('LOAD', cxL, rowY + 9, 6.8, FB, 'c');
   const ld = (e.head && e.head.load) || '';
   if (ld) wrapText(pdfSafe(ld), FB, 8, loadW - 26).slice(0, 3).forEach((ln, k) => txt(ln, cxL + 15, rowY + 14 - k * 9, 8, FB));
-  const lgy = y0 + 12;                                 // small key, the way the hand sketch reads
-  pdfCoil(page, x0 + 14, lgy, x0 + 42, lgy, { pitch: 8, amp: 4, color: red }); txt('U/G CABLE', x0 + 54, lgy - 3, 7);
-  line(x0 + 112, lgy, x0 + 140, lgy, 1.4, true, red); txt('PROPOSED LINE', x0 + 145, lgy - 3, 7);
-  cross(x0 + 222, lgy, 4); txt('POLE', x0 + 230, lgy - 3, 7);
-  page.drawCircle({ x: x0 + 270, y: lgy, size: 6, borderColor: red, borderWidth: 1 }); cross(x0 + 270, lgy, 3.5, red); txt('NEW PURPOSE POLE', x0 + 280, lgy - 3, 7);
-  txt('Red: proposed work.  Black: existing.', x0 + w, lgy - 3, 6.5, F, 'r');
+  const T = sldTotals(e);                               // the key carries the estimate's own figures
+  sldLegend(page, F, x0, y0 + 2, w, [{ s: 'line', t: 'EXISTING' },
+    T.oh ? { s: 'dot', t: `11 KV LINE: ${T.oh} MTR` } : null,
+    T.cable ? { s: 'coil', t: `U/G CABLE: ${T.cable} MTR` } : null,
+    { s: 'cross', red: 1, t: `POLE: ${T.poles} NOS NEW` },
+    lm === 'UG' ? { s: 'ring', t: 'NEW PURPOSE POLE' } : null,
+    { t: 'Red: proposed, black: existing', opt: 1 }]);
 }
 /* Line shifting site map, the way his own sketches read:
    the premises drawn as a plot, the existing line crossing it marked for dismantling,
@@ -6578,7 +6735,8 @@ function shiftMap(page, F, FB, x0, y0, w, h, s, e) {
     for (let k = 0; k < p.length - 1; k++) line(p[k][0], p[k][1], p[k + 1][0], p[k + 1][1], 1.4, true, red);
     try { np = num(buildLineParts(Object.assign({ htDist: ohLen, htPhase: i.htPhase, turns: i.turns, takeoff: 'P', withSS: false, withTF: false, fuse: false }, taOf(i)), N).info.linePoles); } catch (er) { np = 0; }
     np = Math.max(np || Math.ceil(ohLen / span) - 1, p.length - 2);
-    const bends = p.slice(1, -1), free = Math.max(0, Math.min(np, 12) - bends.length);
+    const pathLen = p.slice(1).reduce((s2, q2, k) => s2 + Math.hypot(q2[0] - p[k][0], q2[1] - p[k][1]), 0);
+    const bends = p.slice(1, -1), free = Math.max(0, Math.min(np, poleFit(pathLen)) - bends.length);
     bends.forEach(c => cross(c[0], c[1], 4.5, red));
     const lens = p.slice(1).map((q2, k) => Math.hypot(q2[0] - p[k][0], q2[1] - p[k][1])), T = lens.reduce((a2, b2) => a2 + b2, 0) || 1;
     const raw = lens.map(l2 => free * l2 / T), cnt = raw.map(Math.floor); let left = free - cnt.reduce((a2, b2) => a2 + b2, 0);
@@ -6631,13 +6789,13 @@ function shiftMap(page, F, FB, x0, y0, w, h, s, e) {
   if (ru.length) { ry -= 12; txt('RE-USE', rx, ry, 8, FB); ry -= 10;
     txt(ru.slice(0, 2).map(r => `${fmtQty(r.q.reu)} ${r.unit} ${r.name.split('(')[0].trim()}`).join(',  '), rx + 6, ry, 7); }
   // key
-  const lgy = y0 + 10;
-  line(x0 + 14, lgy, x0 + 38, lgy, 1.4); txt('EXISTING', x0 + 42, lgy - 3, 7);
-  line(x0 + 92, lgy, x0 + 116, lgy, 1.4, true, red); txt('NEW PIP LINE', x0 + 120, lgy - 3, 7);
-  pdfCoil(page, x0 + 182, lgy, x0 + 206, lgy, { pitch: 7, amp: 4, color: red }); txt('U/G CABLE', x0 + 216, lgy - 3, 7);
-  cross(x0 + 272, lgy, 4); txt('POLE', x0 + 280, lgy - 3, 7);
-  cutBox(x0 + 320, lgy); txt('CUT POINT', x0 + 330, lgy - 3, 7);
-  txt('Red: proposed work.  Black: existing.', x0 + w, lgy - 3, 6.5, F, 'r');
+  const T = sldTotals(e);
+  sldLegend(page, F, x0, y0, w, [{ s: 'line', t: 'EXISTING' },
+    ohLen ? { s: 'dot', t: `NEW PIP LINE: ${ohLen} MTR` } : null,
+    T.cable ? { s: 'coil', t: `U/G CABLE: ${T.cable} MTR` } : null,
+    { s: 'cross', red: 1, t: `POLE: ${T.poles} NOS NEW` },
+    ugLen ? { s: 'cut', t: 'CUT POINT' } : null,
+    { t: 'Red: proposed, black: existing', opt: 1 }]);
 }
 function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   const { rgb } = PDFLib, ink = rgb(0, 0, 0), volt = rgb(0.95, 0.72, 0.02);
@@ -6654,7 +6812,7 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   cross(cx, fy, 5);
   if (s.ug && s.ugTap) { page.drawCircle({ x: cx, y: fy, size: 6.5, borderColor: red, borderWidth: 1.1 }); cross(cx, fy, 3.8, red); }   // new purpose pole
   txt(`11 KV ${s.feeder || ''} FEEDER`.trim(), x0 + w / 2, fy + 10, 9, FB, 'c');
-  txt(s.ug ? (s.ugTap ? 'NEW PURPOSE POLE' : 'POLE') : s.ul ? 'POLE' : (s.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE'), cx + 9, fy - 14, 8, FB);
+  txt(s.ug ? (s.ugTap ? 'NEW PURPOSE POLE' : 'POLE') : s.ul ? '' : (s.takeoff === 'N' ? 'NEW TAPPING POINT' : 'TAPPING POLE'), cx + 9, fy - 14, 8, FB);
   const loopWord = s.loop == null ? ' (INCL. 30 MTR LOOP)' : s.loop ? ` + ${s.loop} MTR LOOP` : '';
   const coil = (yy, len) => { pdfCoil(page, cx, yy, cx, yy - len, { color: red }); return yy - len; };
   let y = fy;
@@ -6670,16 +6828,16 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     if (s.ul) txt(`JUMPER ${s.jumper} MTR`, cx + 14, y - 18 * k, 8);
     y -= 34 * k;
   } else if (s.ou && s.htLen) {                        // overhead line first, then the U/G cable
-    let bot = y - drop * 1.1; const ohPoles = Math.max(0, s.poles - 1), x00 = cx;
+    let bot = y - drop * 1.1, partOU = false; const ohPoles = Math.max(0, s.poles - 1), x00 = cx;
     if (s.segs && s.segs.length > 1) {                    // the overhead part turns where the L turns are
       const lastH = s.segs.length % 2 === 0, end = pdfRun(page, cx, y, s.segs, { vBudget: drop * 1.1 - (lastH ? 10 : 0), hBudget: Math.min(80, w * 0.15), dir: -1, FB, span: App.settings.norms.span });
       cx = end.x; bot = end.y; if (lastH) { line(cx, bot, cx, bot - 10, 1.4, true, red); bot -= 10; }
     } else {
       line(cx, y, cx, bot - 0.5, 1.4, true, red);
-      const np = Math.max(1, Math.min(ohPoles, 3));
-      for (let q = 1; q <= np; q++) cross(cx, y - (drop * 1.1) * q / (np + 1), 4, red);
+      const np = Math.max(0, Math.min(ohPoles, poleFit(drop * 1.1))); partOU = np < ohPoles;
+      for (let q = 1; q <= np; q++) cross(cx, y - (drop * 1.1) * q / (np + 1), Math.max(2.4, Math.min(4, (drop * 1.1) / (np + 1) * 0.34)), red);
     }
-    [`${s.htLen} MTR O/H LINE`, `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${ohPoles} NOS PCC POLE${s.dp ? ' + ' + s.dp + ' DP' : ''}`].forEach((t, i) => txt(t, x00 + 16, y - 26 * k - i * 11, i ? 8 : 9, i ? F : FB));
+    [`${s.htLen} MTR O/H LINE`, `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${ohPoles} NOS PCC POLE${partOU ? ' (shown in part)' : ''}${s.dp ? ' + ' + s.dp + ' DP' : ''}`].forEach((t, i) => txt(t, x00 + 16, y - 26 * k - i * 11, i ? 8 : 9, i ? F : FB));
     page.drawCircle({ x: cx, y: bot - 6, size: 6, borderColor: red, borderWidth: 1.1 }); cross(cx, bot - 6, 3.6, red);   // joins the line above and the cable below
     txt(s.toSS ? 'CUT POINT' : 'CUT POINTS (CROSSING)', cx - 10, bot - 9, 7, FB, 'r');
     const cTop = bot - 12, cBot = coil(cTop, 60 * k);
@@ -6695,8 +6853,9 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   } else if (s.htLen) {
     const bot = y - drop * 2;
     line(cx, y, cx, bot, 1.4, true, red);                   // proposed line: dotted, red
-    const np = Math.max(1, Math.min(s.poles, 8));
-    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 2) * q / (np + 1), 4, red);
+    const np = Math.max(0, Math.min(s.poles, poleFit(drop * 2)));   // every line pole the estimate has, as far as they fit
+    const pr = Math.max(2.4, Math.min(4, (drop * 2) / (np + 1) * 0.34));
+    for (let q = 1; q <= np; q++) cross(cx, y - (drop * 2) * q / (np + 1), pr, red);
     const lab2 = `11 KV ${s.ph === '1' ? '1-PH' : '3-PH'}, ${s.poles} NOS PCC POLE${s.poles > np ? ' (shown in part)' : ''}${s.dp ? ' + ' + s.dp + ' DP SET' : ''}`;
     [`${s.htLen} MTR O/H LINE`, lab2].forEach((t, i) => txt(t, cx + 16, y - drop * 0.55 - 10 * k - i * 11, i ? 8 : 9, i ? F : FB));
     y = bot;
@@ -6712,11 +6871,12 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
   if (s.kva) {
     const bw = 86, bh = Math.max(32, 44 * k), bx = cx - bw / 2, by = y - bh;
     page.drawRectangle({ x: bx, y: by, width: bw, height: bh, borderColor: red, borderWidth: 1.4 });
-    txt(`${s.kva} KVA`, cx, by + bh - 14, 10, FB, 'c');
+    txt(s.nTF > 1 ? `${s.nTF} x ${s.kva} KVA` : `${s.kva} KVA`, cx, by + bh - 14, 10, FB, 'c');
     txt(s.ph === '1' ? '1-PHASE' : '3-PHASE', cx, by + bh - 25, 8, F, 'c');
     txt('T/F', cx, by + 5, 8, F, 'c');
     txt(`${s.mount === 'D' ? 'DOUBLE' : 'SINGLE'} POLE S/S${s.ssPoles ? ' (' + s.ssPoles + ' NOS POLE)' : ''}`, bx + bw + 10, by + bh / 2 + 4, 8);
     if (s.oldKVA) txt(`(IN PLACE OF EXISTING ${s.oldKVA} KVA)`, bx + bw + 10, by + bh / 2 - 7, 8);
+    else if (s.ssNote) txt(s.ssNote + (s.nTF > 1 ? ` - ${s.nTF} NOS, ONE PER AG CONNECTION` : ''), bx + bw + 10, by + bh / 2 - 7, 8);
     y = by;
   }
   if (s.ltLen) { const lx = cx + 120;
@@ -6731,12 +6891,14 @@ function sldDraw(page, F, FB, x0, y0, w, h, s, kwLabel) {
     line(dx1 + (dx2 - dx1) / 2 + 4, dy + 6, dx1 + (dx2 - dx1) / 2 + 12, dy - 6, 1.2);
     txt(`EXISTING LINE TO BE DISMANTLED - ${s.dis} MTR`, dx1, dy - 15, 7.5);
   }
-  const lgy = y0 + 8;                                       // legend
-  line(x0 + 14, lgy, x0 + 34, lgy, 1.2); txt('EXISTING', x0 + 38, lgy - 3, 7);
-  line(x0 + 96, lgy, x0 + 116, lgy, 1.4, true, red); txt('PROPOSED (RED)', x0 + 120, lgy - 3, 7);
-  pdfCoil(page, x0 + 186, lgy, x0 + 210, lgy, { pitch: 8, amp: 4, color: red }); txt('U/G CABLE', x0 + 222, lgy - 3, 7);
-  cross(x0 + 282, lgy, 4); txt('POLE', x0 + 290, lgy - 3, 7);
-  const ly = Math.max(y0 + 24, y - 34 * k);
+  const T = s.tot || {};                                    // legend: the estimate's own lengths and pole count
+  sldLegend(page, F, x0, y0 - 2, w, [{ s: 'line', t: 'EXISTING' },
+    T.oh ? { s: 'dot', t: `11 KV LINE: ${T.oh} MTR` } : null,
+    T.lt ? { s: 'dot', t: `LT LINE: ${T.lt} MTR` } : null,
+    T.cable ? { s: 'coil', t: `U/G CABLE: ${T.cable} MTR` } : null,
+    { s: 'cross', red: 1, t: `POLE: ${T.poles || 0} NOS NEW` },
+    { t: 'Red: proposed, black: existing', opt: 1 }]);
+  const ly = Math.max(y0 + 32, y - 34 * k);                // the load stays clear of the key
   line(cx, y, cx, ly + 14, 1.2);                            // the supply goes on to the load, unbroken
   page.drawCircle({ x: cx, y: ly, size: 14, borderColor: ink, borderWidth: 1.2, color: volt, opacity: 0.25 });
   txt('LOAD', cx, ly - 3, 8, FB, 'c');
@@ -7127,11 +7289,11 @@ const ROMAN = ['(i)', '(ii)', '(iii)', '(iv)', '(v)', '(vi)', '(vii)'];
 function tfrRows(e) {                                  // name of work | amount | charged from
   if (!e) return [];
   const i = e.inp || {}, out = [];
-  const add = (n, v, from) => { if (num(v) > 0) out.push([n, num(v), from || 'Consumer']); };
+  const add = (n, v, from) => { if (num(v) > 0) out.push([n, num(v), from || 'As per TCOS']); };
   if (e.type === 'ht') {
     const L = ladderHT(e.rows, e.opt);
     add('Line & S/S', L.S.total, 'As per TCOS');
-    add('Cable work', L.C.total, 'Consumer');
+    add('Cable work', L.C.total, 'As per TCOS');
     add('Metering equipments', L.M.total, 'As per TCOS');
     add('Supervision', L.P.total, 'As per TCOS');
   } else if (e.type === 'nc') {
@@ -7139,7 +7301,7 @@ function tfrRows(e) {                                  // name of work | amount 
     add('LT line', L.lt.GT); add('HT line', L.ht.GT); add('S/S material', L.ss.GT);
   } else if (e.type === 'mip' || e.type === 'cm') {
     const L = ladderConn(e.rows, e.opt, e.type), HD = { lt: 'LT line', ht: 'HT line', ss: 'S/S material', mn: 'Metering by Nigam', ma: 'Supervision', mt: 'Metering' };
-    CONN[e.type].cols.forEach(([c]) => add(HD[c], L[c].GT, c === 'ma' ? 'As per TCOS' : 'Consumer'));
+    CONN[e.type].cols.forEach(([c]) => add(HD[c], L[c].GT, 'As per TCOS'));
   } else if (e.type === 'sh') add('Shifting work', ladderSH(e.rows, Object.assign({ tfShiftRate: App.settings.norms.tfShiftRate }, e.opt)).NET);
   else if (e.type === 'sis') add('Capacity augmentation', ladderSIS(e.rows).NET, 'Nigam head');
   return out;
